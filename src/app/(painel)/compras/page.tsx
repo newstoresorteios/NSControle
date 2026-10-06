@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createTradeIn } from "@/app/(painel)/compras/actions";
 import { requireTeam } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { brl } from "@/lib/format";
 
 export default async function ComprasPage({
@@ -9,11 +10,12 @@ export default async function ComprasPage({
   searchParams: Promise<{ erro?: string }>;
 }) {
   const params = await searchParams;
-  const { supabase } = await requireTeam();
-  const { data } = await supabase
-    .from("ctl_trade_ins")
-    .select("id, client_name, phone, code, model, condition, cost, invoice_received, delivered, order_id")
-    .order("client_name");
+  await requireTeam();
+  const data = await db()`
+    select id, client_name, phone, code, model, condition, cost, invoice_received, delivered, order_id
+    from ctl_trade_ins
+    order by client_name
+  `;
 
   return (
     <div className="grid gap-5">

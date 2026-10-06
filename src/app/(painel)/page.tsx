@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { syncTrayNow } from "@/app/(painel)/tray-actions";
 import { requireTeam } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { brl } from "@/lib/format";
 import { trayConfigured } from "@/lib/tray-client";
 
@@ -32,17 +33,18 @@ function syncLine(
   return [flash ? `${flash}${extra}` : null, detail].filter(Boolean).join(" ");
 }
 
-async function queueCount(
-  supabase: Awaited<ReturnType<typeof requireTeam>>["supabase"],
-  id: (typeof QUEUES)[number]["id"],
-) {
-  let query = supabase.from("ctl_orders").select("id", { count: "exact", head: true });
-  if (id === "devolucao") query = query.ilike("tracking_situation", "%DEVOLU%");
-  if (id === "alfandega") query = query.ilike("tracking_situation", "%ALF%");
-  if (id === "sem_retorno") query = query.ilike("tracking_situation", "%Sem retorno%");
-  if (id === "vindi") query = query.eq("commercial_status", "A ENVIAR VINDI");
-  const { count } = await query;
-  return count ?? 0;
+async function queueCount(id: (typeof QUEUES)[number]["id"]) {
+  const sql = db();
+  const rows = await sql<{ n: number }[]>`
+    select count(*)::int as n
+    from ctl_orders
+    where
+      (${id} <> 'devolucao' or tracking_situation ilike '%DEVOLU%')
+      and (${id} <> 'alfandega' or tracking_situation ilike '%ALF%')
+      and (${id} <> 'sem_retorno' or tracking_situation ilike '%Sem retorno%')
+      and (${id} <> 'vindi' or commercial_status = 'A ENVIAR VINDI')
+  `;
+  return rows[0]?.n ?? 0;
 }
 
 const SYNC_MESSAGE: Record<string, string> = {
@@ -59,18 +61,26 @@ export default async function HomePage({
   searchParams: Promise<{ sync?: string; pedidos?: string }>;
 }) {
   const params = await searchParams;
-  const { supabase } = await requireTeam();
+  await requireTeam();
   const configured = trayConfigured();
-  const [{ data: sync }, counts, { data: alerts }] = await Promise.all([
-    supabase.from("ctl_tray_sync").select("last_run_at, last_status, last_report").eq("id", "orders").maybeSingle(),
-    Promise.all(QUEUES.map((queue) => queueCount(supabase, queue.id))),
-    supabase
-      .from("ctl_orders")
-      .select("id, label, order_key, tracking_situation, tracking_code, origin, shipping_cost, import_tax")
-      .or("tracking_situation.ilike.%DEVOLU%,tracking_situation.ilike.%ALF%,tracking_situation.ilike.%PROBLEMA%,tracking_situation.ilike.%Sem retorno%")
-      .order("tracking_event_at", { ascending: false, nullsFirst: false })
-      .limit(12),
+  const sql = db();
+  const [syncRows, counts, alerts] = await Promise.all([
+    sql<{ last_run_at: string | null; last_status: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
+      select last_run_at, last_status, last_report from ctl_tray_sync where id = 'orders' limit 1
+    `,
+    Promise.all(QUEUES.map((queue) => queueCount(queue.id))),
+    sql<{ id: string; label: string | null; order_key: string; tracking_situation: string | null; tracking_code: string | null; origin: string | null; shipping_cost: string | null; import_tax: string | null }[]>`
+      select id, label, order_key, tracking_situation, tracking_code, origin, shipping_cost, import_tax
+      from ctl_orders
+      where tracking_situation ilike '%DEVOLU%'
+        or tracking_situation ilike '%ALF%'
+        or tracking_situation ilike '%PROBLEMA%'
+        or tracking_situation ilike '%Sem retorno%'
+      order by tracking_event_at desc nulls last
+      limit 12
+    `,
   ]);
+  const sync = syncRows[0] ?? null;
 
   return (
     <div className="grid gap-6">

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
+import { db, insertRow, updateRow } from "@/lib/db";
 import { decimal, flag, integer, monthDate, text } from "@/lib/form";
 
 const SENTINEL = "0001-01-01";
@@ -43,13 +44,16 @@ function orderFields(formData: FormData) {
 }
 
 export async function createOrder(formData: FormData) {
-  const { supabase } = await requireTeam();
+  await requireTeam();
   const fields = orderFields(formData);
   if (!fields.order_key) redirect("/pedidos?erro=numero");
-  const { data, error } = await supabase.from("ctl_orders").insert(fields).select("id").single();
-  if (error || !data) redirect("/pedidos?erro=salvar");
-  revalidatePath("/pedidos");
-  redirect(`/pedidos/${data.id}`);
+  try {
+    const data = await insertRow("ctl_orders", fields);
+    revalidatePath("/pedidos");
+    redirect(`/pedidos/${data.id}`);
+  } catch {
+    redirect("/pedidos?erro=salvar");
+  }
 }
 
 const TEXT_FIELDS = [
@@ -83,32 +87,35 @@ function sheetKey(label: string) {
 }
 
 export async function addSheetRow(formData: FormData) {
-  const { supabase } = await requireTeam();
+  await requireTeam();
   const label = text(formData, "label");
   const origin = text(formData, "origin");
   if (!label || !origin) redirect("/pedidos?aba=pedidos&erro=numero");
   const orderKey = sheetKey(label);
-  const { data: existing } = await supabase.from("ctl_orders").select("id").eq("order_key", orderKey).limit(1);
-  if (existing && existing.length > 0) {
+  const existing = await db()<{ id: string }[]>`select id from ctl_orders where order_key = ${orderKey} limit 1`;
+  if (existing.length > 0) {
     redirect(`/pedidos?aba=pedidos&q=${encodeURIComponent(orderKey)}&erro=duplicado`);
   }
-  const { error } = await supabase.from("ctl_orders").insert({
-    order_key: orderKey,
-    label,
-    origin,
-    product_name: text(formData, "product_name"),
-    flow: "encomenda",
-    finance_month: null,
-    finance_month_key: SENTINEL,
-  });
-  if (error) redirect("/pedidos?aba=pedidos&erro=salvar");
+  try {
+    await insertRow("ctl_orders", {
+      order_key: orderKey,
+      label,
+      origin,
+      product_name: text(formData, "product_name"),
+      flow: "encomenda",
+      finance_month: null,
+      finance_month_key: SENTINEL,
+    });
+  } catch {
+    redirect("/pedidos?aba=pedidos&erro=salvar");
+  }
   revalidatePath("/pedidos");
   redirect("/pedidos?aba=pedidos");
 }
 
 export async function patchOrder(id: string, raw: Record<string, unknown>) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false as const };
-  const { supabase } = await requireTeam();
+  await requireTeam();
   const patch: Record<string, string | number | boolean | null> = {};
 
   for (const key of TEXT_FIELDS) {
@@ -142,8 +149,11 @@ export async function patchOrder(id: string, raw: Record<string, unknown>) {
   }
 
   if (Object.keys(patch).length === 0) return { ok: true as const };
-  const { error } = await supabase.from("ctl_orders").update(patch).eq("id", id);
-  if (error) return { ok: false as const };
+  try {
+    await updateRow("ctl_orders", patch, "id", id);
+  } catch {
+    return { ok: false as const };
+  }
   revalidatePath("/pedidos");
   revalidatePath("/");
   revalidatePath(`/pedidos/${id}`);
@@ -151,13 +161,16 @@ export async function patchOrder(id: string, raw: Record<string, unknown>) {
 }
 
 export async function updateOrder(formData: FormData) {
-  const { supabase } = await requireTeam();
+  await requireTeam();
   const id = text(formData, "id");
   if (!id) redirect("/pedidos");
   const fields = orderFields(formData);
   if (!fields.order_key) redirect(`/pedidos/${id}?erro=numero`);
-  const { error } = await supabase.from("ctl_orders").update(fields).eq("id", id);
-  if (error) redirect(`/pedidos/${id}?erro=salvar`);
+  try {
+    await updateRow("ctl_orders", fields, "id", id);
+  } catch {
+    redirect(`/pedidos/${id}?erro=salvar`);
+  }
   revalidatePath("/pedidos");
   revalidatePath(`/pedidos/${id}`);
   revalidatePath("/");

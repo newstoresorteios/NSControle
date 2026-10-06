@@ -6,8 +6,8 @@ import { requireTeam } from "@/lib/auth";
 import { runTraySync } from "@/lib/tray-sync";
 
 export async function syncTrayNow() {
-  const { supabase } = await requireTeam();
-  const report = await runTraySync(supabase, { force: true });
+  await requireTeam();
+  const report = await runTraySync({ force: true });
   revalidatePath("/");
   revalidatePath("/pedidos");
   revalidatePath("/financeiro");

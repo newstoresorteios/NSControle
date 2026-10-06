@@ -8,8 +8,8 @@ import { scheduleTraySync } from "@/lib/tray-sync";
 export const dynamic = "force-dynamic";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
-  const { supabase, email } = await requireTeam();
-  after(() => scheduleTraySync(supabase));
+  const { email } = await requireTeam();
+  after(() => scheduleTraySync());
   return (
     <div className="min-h-screen">
       <header className="border-b border-[#e2d9cc] bg-[#fffdf8]">

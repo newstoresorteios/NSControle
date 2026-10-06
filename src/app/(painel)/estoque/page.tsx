@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createInventoryItem } from "@/app/(painel)/estoque/actions";
 import { requireTeam } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { asNumber, brl } from "@/lib/format";
 
 export default async function EstoquePage({
@@ -9,13 +10,26 @@ export default async function EstoquePage({
   searchParams: Promise<{ erro?: string }>;
 }) {
   const params = await searchParams;
-  const { supabase } = await requireTeam();
-  const { data } = await supabase
-    .from("ctl_inventory_items")
-    .select("id, brand, model, origin, tracking_code, sale_price, sale_price_note, cost, location, status, order_id")
-    .order("brand")
-    .order("model");
-  const items = data ?? [];
+  await requireTeam();
+  const items = await db()<
+    {
+      id: string;
+      brand: string | null;
+      model: string;
+      origin: string | null;
+      tracking_code: string | null;
+      sale_price: string | null;
+      sale_price_note: string | null;
+      cost: string | null;
+      location: string | null;
+      status: string | null;
+      order_id: string | null;
+    }[]
+  >`
+    select id, brand, model, origin, tracking_code, sale_price, sale_price_note, cost, location, status, order_id
+    from ctl_inventory_items
+    order by brand, model
+  `;
   const priced = items.map((item) => asNumber(item.sale_price)).filter((value): value is number => value != null);
   const costs = items.map((item) => asNumber(item.cost)).filter((value): value is number => value != null);
   const saleTotal = priced.reduce((sum, value) => sum + value, 0);

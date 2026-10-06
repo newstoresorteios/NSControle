@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { saveGoal } from "@/app/(painel)/financeiro/actions";
 import { requireTeam } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { monthSummary } from "@/lib/finance";
 import { FLOW_LABEL, asNumber, brl, monthLabel, percent } from "@/lib/format";
 
@@ -10,21 +11,24 @@ export default async function FinanceiroPage({
   searchParams: Promise<{ month?: string; erro?: string }>;
 }) {
   const params = await searchParams;
-  const { supabase } = await requireTeam();
-  const [{ data: goals }, { data: monthRows }] = await Promise.all([
-    supabase.from("ctl_monthly_goals").select("month, target_amount").order("month", { ascending: false }),
-    supabase
-      .from("ctl_orders")
-      .select("finance_month")
-      .not("finance_month", "is", null)
-      .order("finance_month", { ascending: false })
-      .limit(1000),
+  await requireTeam();
+  const sql = db();
+  const [goals, monthRows] = await Promise.all([
+    sql<{ month: string; target_amount: string }[]>`
+      select month, target_amount from ctl_monthly_goals order by month desc
+    `,
+    sql<{ finance_month: string }[]>`
+      select finance_month from ctl_orders
+      where finance_month is not null
+      order by finance_month desc
+      limit 1000
+    `,
   ]);
   const months = [
     ...new Set(
       [
-        ...(goals ?? []).map((goal) => String(goal.month).slice(0, 7)),
-        ...(monthRows ?? []).map((row) => String(row.finance_month).slice(0, 7)),
+        ...goals.map((goal) => String(goal.month).slice(0, 7)),
+        ...monthRows.map((row) => String(row.finance_month).slice(0, 7)),
       ].filter((month) => /^\d{4}-\d{2}$/.test(month)),
     ),
   ].sort((a, b) => b.localeCompare(a));
@@ -33,15 +37,30 @@ export default async function FinanceiroPage({
     return <p>Nenhum mês financeiro importado.</p>;
   }
   const monthDate = `${selected}-01`;
-  const goal = (goals ?? []).find((item) => String(item.month).slice(0, 7) === selected);
-  const { data: orders } = await supabase
-    .from("ctl_orders")
-    .select(
-      "id, label, order_key, flow, reference, product_name, sourcing_status, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, gain_amount",
-    )
-    .eq("finance_month", monthDate)
-    .order("flow")
-    .order("order_key", { ascending: false });
+  const goal = goals.find((item) => String(item.month).slice(0, 7) === selected);
+  const orders = await sql<
+    {
+      id: string;
+      label: string | null;
+      order_key: string;
+      flow: string;
+      reference: string | null;
+      product_name: string | null;
+      sourcing_status: string | null;
+      sale_amount: string | null;
+      purchase_amount: string | null;
+      payment_fee: string | null;
+      shipping_cost: string | null;
+      import_tax: string | null;
+      gain_amount: string | null;
+    }[]
+  >`
+    select id, label, order_key, flow, reference, product_name, sourcing_status,
+      sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, gain_amount
+    from ctl_orders
+    where finance_month = ${monthDate}
+    order by flow, order_key desc
+  `;
   const summary = monthSummary(orders ?? [], asNumber(goal?.target_amount), selected);
   const cards = [
     ["Sob encomenda", summary.vendasEncomenda],
@@ -115,7 +134,7 @@ export default async function FinanceiroPage({
             </tr>
           </thead>
           <tbody>
-            {(orders ?? []).map((order) => (
+            {orders.map((order) => (
               <tr key={order.id}>
                 <td>
                   <Link href={`/pedidos/${order.id}`} className="underline">

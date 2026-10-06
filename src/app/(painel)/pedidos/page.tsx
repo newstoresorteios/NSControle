@@ -2,6 +2,7 @@ import Link from "next/link";
 import { addSheetRow } from "@/app/(painel)/pedidos/actions";
 import { OrderSheet, type SheetMode, type SheetOrder } from "@/components/order-sheet";
 import { requireTeam } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 const PAGE_SIZE = 60;
 
@@ -31,35 +32,38 @@ export default async function PedidosPage({
   const aba = resolveAba(params.aba, params.fila);
   const page = Math.max(Number(params.page || 1), 1);
   const q = (params.q || "").trim();
-  const { supabase } = await requireTeam();
-
-  let query = supabase.from("ctl_orders").select(COLUMNS, { count: "exact" });
-  if (!q) {
-    if (aba === "pedidos") query = query.eq("delivered", false).not("origin", "is", null);
-    if (aba === "acompanhamento") query = query.in("commercial_status", ["A ENVIAR VINDI", "A ENVIAR", "ENVIADO"]);
-    if (aba === "rastreio") query = query.eq("delivered", false).not("tracking_code", "is", null);
-    if (aba === "entregues") query = query.eq("delivered", true);
-  }
-  if (q) {
-    const safe = q.replace(/[%*,]/g, "");
-    query = query.or(
-      `order_key.ilike.%${safe}%,label.ilike.%${safe}%,product_name.ilike.%${safe}%,reference.ilike.%${safe}%,tracking_code.ilike.%${safe}%,origin.ilike.%${safe}%,supplier_ref.ilike.%${safe}%,notes_human.ilike.%${safe}%`,
-    );
-  }
-  if (params.fila === "devolucao") query = query.ilike("tracking_situation", "%DEVOLU%");
-  if (params.fila === "alfandega") query = query.ilike("tracking_situation", "%ALF%");
-  if (params.fila === "sem_retorno") query = query.ilike("tracking_situation", "%Sem retorno%");
-  if (params.fila === "vindi") query = query.eq("commercial_status", "A ENVIAR VINDI");
-
-  if (aba === "entregues" && !q) {
-    const from = (page - 1) * PAGE_SIZE;
-    query = query.order("updated_at", { ascending: false }).range(from, from + PAGE_SIZE - 1);
-  } else {
-    query = query.limit(500);
-  }
-
-  const { data, count } = await query;
-  const rows = ((data ?? []) as RawOrder[]).map(toSheetOrder);
+  await requireTeam();
+  const safe = q.replace(/[%*,]/g, "");
+  const like = `%${safe}%`;
+  const paginate = aba === "entregues" && !q;
+  const found = await db()<Array<RawOrder & { total_count: number }>>`
+    select ${db().unsafe(COLUMNS)}, count(*) over()::int as total_count
+    from ctl_orders
+    where (
+      ${q} = ''
+      or order_key ilike ${like}
+      or label ilike ${like}
+      or product_name ilike ${like}
+      or reference ilike ${like}
+      or tracking_code ilike ${like}
+      or origin ilike ${like}
+      or supplier_ref ilike ${like}
+      or notes_human ilike ${like}
+    )
+    and (${q} <> '' or ${aba} <> 'pedidos' or (delivered = false and origin is not null))
+    and (${q} <> '' or ${aba} <> 'acompanhamento' or commercial_status in ('A ENVIAR VINDI', 'A ENVIAR', 'ENVIADO'))
+    and (${q} <> '' or ${aba} <> 'rastreio' or (delivered = false and tracking_code is not null))
+    and (${q} <> '' or ${aba} <> 'entregues' or delivered = true)
+    and (${params.fila ?? ""} <> 'devolucao' or tracking_situation ilike '%DEVOLU%')
+    and (${params.fila ?? ""} <> 'alfandega' or tracking_situation ilike '%ALF%')
+    and (${params.fila ?? ""} <> 'sem_retorno' or tracking_situation ilike '%Sem retorno%')
+    and (${params.fila ?? ""} <> 'vindi' or commercial_status = 'A ENVIAR VINDI')
+    order by case when ${paginate} then updated_at end desc nulls last
+    limit ${paginate ? PAGE_SIZE : 500}
+    offset ${paginate ? (page - 1) * PAGE_SIZE : 0}
+  `;
+  const count = found[0]?.total_count ?? 0;
+  const rows = found.map((order) => toSheetOrder(order));
   if (!(aba === "entregues" && !q)) rows.sort(compareOrders);
   const pages = Math.max(Math.ceil((count ?? 0) / PAGE_SIZE), 1);
   const hint = ABAS.find((item) => item.id === aba)?.hint;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createCancellation } from "@/app/(painel)/cancelamentos/actions";
 import { requireTeam } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { brl, shortDate } from "@/lib/format";
 
 export default async function CancelamentosPage({
@@ -9,11 +10,12 @@ export default async function CancelamentosPage({
   searchParams: Promise<{ erro?: string }>;
 }) {
   const params = await searchParams;
-  const { supabase } = await requireTeam();
-  const { data } = await supabase
-    .from("ctl_cancellations")
-    .select("id, order_id, order_key, model, amount, due_date, done_date, status, gateway, refund_method, bank_details, reason")
-    .order("due_date", { ascending: false, nullsFirst: false });
+  await requireTeam();
+  const data = await db()`
+    select id, order_id, order_key, model, amount, due_date, done_date, status, gateway, refund_method, bank_details, reason
+    from ctl_cancellations
+    order by due_date desc nulls last
+  `;
 
   return (
     <div className="grid gap-5">

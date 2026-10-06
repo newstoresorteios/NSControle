@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { updateOrder } from "@/app/(painel)/pedidos/actions";
 import { requireTeam } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { brl } from "@/lib/format";
 
 export default async function PedidoPage({
@@ -13,8 +14,9 @@ export default async function PedidoPage({
 }) {
   const { id } = await params;
   const query = await searchParams;
-  const { supabase } = await requireTeam();
-  const { data: order } = await supabase.from("ctl_orders").select("*").eq("id", id).maybeSingle();
+  await requireTeam();
+  const found = await db()`select * from ctl_orders where id = ${id} limit 1`;
+  const order = found[0];
   if (!order) notFound();
   const monthValue = order.finance_month ? String(order.finance_month).slice(0, 7) : "";
 
