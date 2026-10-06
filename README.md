@@ -22,7 +22,7 @@ A importação grava `data/import_report.json` e, com as variáveis do `.env.loc
 
 Com `TRAY_ADAPTER_URL` e `TRAY_ADAPTER_TOKEN` (o mesmo Bearer interno do adaptador), o painel puxa pedidos da loja ao ser aberto e pelo botão **Atualizar agora**. Cada rodada grava até 15 pedidos em `ctl_orders` no fluxo Loja nova: status, produto, venda, pagamento, rastreio e cancelamento. Custo de compra, taxa de importação, estoque físico e compras de clientes não vêm da Tray.
 
-Fora do painel, a cada 10 minutos:
+Fora do painel, a Vercel dispara `/api/tray/sync` uma vez por dia, às 8h de Brasília. No plano Hobby um cron mais frequente impede o deploy. Para rodar na hora:
 
 ```bash
 curl -X POST "$APP_URL/api/tray/sync" -H "Authorization: Bearer $TRAY_SYNC_SECRET"
