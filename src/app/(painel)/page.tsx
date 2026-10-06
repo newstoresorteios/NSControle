@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { syncTrayNow } from "@/app/(painel)/tray-actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { brl } from "@/lib/format";
@@ -17,7 +16,7 @@ function syncLine(
   notice?: string,
   pedidos?: string,
 ) {
-  const flash = notice ? SYNC_MESSAGE[notice] : null;
+  const flash = notice && notice !== "aguardando" ? SYNC_MESSAGE[notice] : null;
   const extra = notice === "ok" && pedidos && pedidos !== "0" ? ` ${pedidos} pedidos gravados.` : "";
   const when = sync?.last_run_at
     ? new Intl.DateTimeFormat("pt-BR", {
@@ -92,18 +91,11 @@ export default async function HomePage({
         <div>
           <h2 className="font-semibold">Loja Tray</h2>
           <p className="max-w-3xl text-sm text-[#6d645b]">
-            Pedidos, valor de venda, pagamento, rastreio e cancelamentos entram sozinhos a partir do TRAYadaptor.
+            Pedidos, valor de venda, pagamento, rastreio e cancelamentos entram sozinhos a partir do TRAYadaptor, a cada 10 minutos.
             Custo de compra, taxa de importação, estoque físico e compras de clientes continuam neste controle.
           </p>
-          <p className="mt-2 text-sm">{syncLine(sync, params.sync, params.pedidos)}</p>
+          <p className="mt-2 text-sm">{configured ? syncLine(sync, params.sync, params.pedidos) : "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN."}</p>
         </div>
-        {configured ? (
-          <form action={syncTrayNow}>
-            <button type="submit">Atualizar agora</button>
-          </form>
-        ) : (
-          <p className="text-sm">Defina TRAY_ADAPTER_URL e TRAY_ADAPTER_TOKEN para puxar a loja.</p>
-        )}
       </section>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {QUEUES.map((queue, index) => (

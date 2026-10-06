@@ -5,12 +5,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+function sameSecret(supplied: string, expected: string) {
+  if (!supplied || supplied.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+}
+
 function authorized(request: Request) {
-  const expected = process.env.TRAY_SYNC_SECRET?.trim() || "";
   const header = request.headers.get("authorization") || "";
   const supplied = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
-  if (!expected || supplied.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+  const secrets = [process.env.CRON_SECRET, process.env.TRAY_SYNC_SECRET]
+    .map((value) => value?.trim() || "")
+    .filter(Boolean);
+  return secrets.some((expected) => sameSecret(supplied, expected));
 }
 
 function statusFor(reason: string, ok: boolean) {

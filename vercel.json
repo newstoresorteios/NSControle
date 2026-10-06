@@ -13,5 +13,11 @@
         "service": "app"
       }
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/tray/sync",
+      "schedule": "*/10 * * * *"
+    }
   ]
 }

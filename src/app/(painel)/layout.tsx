@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { signOut } from "@/app/login/actions";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { Logo } from "@/components/logo";
 import { Nav } from "@/components/nav";
 import { requireTeam } from "@/lib/auth";
@@ -24,6 +25,7 @@ export default async function PainelLayout({ children }: { children: React.React
           </form>
         </div>
       </header>
+      <AutoRefresh />
       <main className="mx-auto max-w-[1600px] px-4 py-6">{children}</main>
     </div>
   );
