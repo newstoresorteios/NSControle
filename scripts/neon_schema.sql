@@ -65,7 +65,7 @@ create table if not exists public.ctl_orders (
   notes_human text,
   finance_month date,
   finance_month_key date not null,
-  data_source text not null default 'planilha' check (data_source in ('planilha', 'manual', 'tray')),
+  data_source text not null default 'planilha' check (data_source in ('planilha', 'manual', 'tray', 'bi')),
   tray_modified_at timestamptz,
   notes_tray text,
   created_at timestamptz not null default now(),

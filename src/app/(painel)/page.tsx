@@ -65,7 +65,10 @@ export default async function HomePage({
   const sql = db();
   const [syncRows, counts, alerts] = await Promise.all([
     sql<{ last_run_at: string | null; last_status: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
-      select last_run_at, last_status, last_report from ctl_tray_sync where id = 'orders' limit 1
+      select last_run_at, last_status, last_report from ctl_tray_sync
+      where id in ('bi', 'orders')
+      order by last_run_at desc nulls last
+      limit 1
     `,
     Promise.all(QUEUES.map((queue) => queueCount(queue.id))),
     sql<{ id: string; label: string | null; order_key: string; tracking_situation: string | null; tracking_code: string | null; origin: string | null; shipping_cost: string | null; import_tax: string | null }[]>`

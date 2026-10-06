@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { runBiSync } from "@/lib/bi-sync";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { TrayRequestError, trayConfigured, trayGet } from "@/lib/tray-client";
 import {
@@ -370,6 +371,20 @@ export async function runTraySync(options?: { force?: boolean }): Promise<SyncRe
 }
 
 export async function scheduleTraySync() {
+  try {
+    const bi = await runBiSync();
+    if (bi.reason === "ok") {
+      if (bi.upserted > 0) {
+        revalidatePath("/");
+        revalidatePath("/pedidos");
+        revalidatePath("/financeiro");
+        revalidatePath("/cancelamentos");
+      }
+      return;
+    }
+  } catch (error) {
+    console.error("bi sync", error instanceof Error ? error.message : "erro");
+  }
   if (!trayConfigured()) return;
   try {
     const report = await runTraySync({ force: false });
