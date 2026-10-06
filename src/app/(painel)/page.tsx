@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { syncTrayNow } from "@/app/(painel)/tray-actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { brl } from "@/lib/format";
@@ -66,8 +67,7 @@ export default async function HomePage({
   const [syncRows, counts, alerts] = await Promise.all([
     sql<{ last_run_at: string | null; last_status: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
       select last_run_at, last_status, last_report from ctl_tray_sync
-      where id in ('bi', 'orders')
-      order by last_run_at desc nulls last
+      where id = 'orders'
       limit 1
     `,
     Promise.all(QUEUES.map((queue) => queueCount(queue.id))),
@@ -94,11 +94,16 @@ export default async function HomePage({
         <div>
           <h2 className="font-semibold">Loja Tray</h2>
           <p className="max-w-3xl text-sm text-[#6d645b]">
-            Pedidos da loja entram sozinhos enquanto o painel está aberto, em cerca de um minuto.
+            Pedidos da loja entram pelo TRAYadaptor enquanto o painel está aberto. Cada rodada grava até 15 pedidos.
             Custo de compra, taxa de importação, estoque físico e compras de clientes continuam neste controle.
           </p>
           <p className="mt-2 text-sm">{configured ? syncLine(sync, params.sync, params.pedidos) : "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN."}</p>
         </div>
+        {configured ? (
+          <form action={syncTrayNow}>
+            <button type="submit">Atualizar agora</button>
+          </form>
+        ) : null}
       </section>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {QUEUES.map((queue, index) => (
