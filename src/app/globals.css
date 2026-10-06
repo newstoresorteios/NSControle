@@ -1,15 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --paper: #f3efe6;
-  --ink: #1c1915;
-  --muted: #6d645b;
-  --line: #e2d9cc;
-  --card: #fffdf8;
-  --brick: #8f3d2b;
-  --brick-dark: #6e2c1e;
-  --pine: #1f4d3a;
-  --warn: #8a5a12;
+  --ink: #16171c;
+  --paper: #f4f4f4;
+  --muted: #6b6b73;
+  --line: #e6e6e6;
+  --card: #ffffff;
+  --danger: #9d1c2e;
+  --ok: #157a3a;
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-card: var(--card);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
 }
 
 body {
@@ -18,40 +26,103 @@ body {
   font-family: var(--font-sans), "Segoe UI", sans-serif;
 }
 
+::selection {
+  background: var(--ink);
+  color: white;
+}
+
 input,
 select,
 textarea {
   background: white;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  padding: 0.45rem 0.6rem;
+  border: 1px solid #d9d9de;
+  border-radius: 0.25rem;
+  padding: 0.55rem 0.7rem;
   width: 100%;
-  color: inherit;
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 1px solid var(--ink);
+  border-color: var(--ink);
 }
 
 input[type="checkbox"] {
   width: auto;
   padding: 0;
+  accent-color: var(--ink);
 }
 
 textarea {
   min-height: 5rem;
 }
 
+label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+label input,
+label select,
+label textarea {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+label:has(input[type="checkbox"]) {
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.page-title + p {
+  margin-top: 0.45rem;
+}
+
 button,
 .button {
-  background: var(--brick);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink);
   color: white;
-  border-radius: 0.4rem;
-  padding: 0.5rem 0.85rem;
-  font-weight: 600;
+  border: 1px solid var(--ink);
+  border-radius: 0.25rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button:hover,
+.button:hover {
+  background: #000;
 }
 
 button.secondary,
 .button.secondary {
-  background: transparent;
+  background: white;
   color: var(--ink);
-  border: 1px solid var(--line);
+}
+
+button.secondary:hover,
+.button.secondary:hover {
+  background: var(--paper);
 }
 
 table {
@@ -62,25 +133,65 @@ table {
 
 th {
   text-align: left;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
-  padding: 0.55rem 0.45rem;
+  padding: 0.7rem 0.5rem;
   border-bottom: 1px solid var(--line);
 }
 
 td {
-  padding: 0.55rem 0.45rem;
+  padding: 0.7rem 0.5rem;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
+}
+
+tbody tr:hover td {
+  background: #fafafa;
+}
+
+td a {
+  text-underline-offset: 3px;
 }
 
 .card {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 0.8rem;
-  padding: 1rem;
+  border-radius: 0;
+  padding: 1.15rem 1.25rem;
+}
+
+a.card:hover {
+  border-color: var(--ink);
+}
+
+.stat {
+  border-top: 2px solid var(--ink);
+}
+
+.page-title {
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.section-title {
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kicker {
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .num {
@@ -112,13 +223,17 @@ td {
   vertical-align: middle;
 }
 
+.sheet tbody tr:hover td {
+  background: #fafafa;
+}
+
 .sheet input:not([type="checkbox"]),
 .sheet select,
 .sheet textarea {
   min-width: 9rem;
   padding: 0.2rem 0.35rem;
   font-size: 0.85rem;
-  border-radius: 0.25rem;
+  border-radius: 0.2rem;
 }
 
 .sheet .wide input,
@@ -141,4 +256,16 @@ td {
 .sheet input[type="checkbox"] {
   width: 1rem;
   height: 1rem;
+}
+
+summary.section-title {
+  cursor: pointer;
+}
+
+.nav-scroll {
+  scrollbar-width: none;
+}
+
+.nav-scroll::-webkit-scrollbar {
+  display: none;
 }

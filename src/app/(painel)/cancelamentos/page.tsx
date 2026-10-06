@@ -20,12 +20,12 @@ export default async function CancelamentosPage({
   return (
     <div className="grid gap-5">
       <div>
-        <h1 className="text-2xl font-semibold">Cancelamentos</h1>
-        <p className="text-[#6d645b]">Estornos e a data combinada para devolver.</p>
+        <h1 className="page-title">Cancelamentos</h1>
+        <p className="text-muted">Estornos e a data combinada para devolver.</p>
       </div>
-      {params.erro ? <p className="text-sm text-[#8f3d2b]">Não foi possível registrar o cancelamento.</p> : null}
+      {params.erro ? <p className="text-sm text-danger">Não foi possível registrar o cancelamento.</p> : null}
       <details className="card">
-        <summary className="cursor-pointer font-semibold">Novo cancelamento</summary>
+        <summary className="section-title">Novo cancelamento</summary>
         <form action={createCancellation} className="mt-3 grid gap-3 md:grid-cols-3">
           <label className="grid gap-1 text-sm">Pedido<input name="order_key" /></label>
           <label className="grid gap-1 text-sm">Modelo<input name="model" /></label>

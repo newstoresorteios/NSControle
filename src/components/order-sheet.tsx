@@ -262,7 +262,7 @@ function OrderCell({ row, status }: { row: SheetOrder; status: SaveStatus }) {
       <Link href={`/pedidos/${row.id}`} className="underline">
         {row.label || row.order_key}
       </Link>
-      <div className="text-xs text-[#6d645b]">{status === "idle" ? "\u00a0" : STATUS_LABEL[status]}</div>
+      <div className="text-xs text-muted">{status === "idle" ? "\u00a0" : STATUS_LABEL[status]}</div>
     </td>
   );
 }

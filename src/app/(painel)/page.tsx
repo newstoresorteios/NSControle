@@ -125,13 +125,13 @@ export default async function HomePage({
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">Filas do dia</h1>
-        <p className="text-[#6d645b]">O que precisa de ação antes do restante da planilha.</p>
+        <h1 className="page-title">Filas do dia</h1>
+        <p className="text-muted">O que precisa de ação antes do restante da planilha.</p>
       </div>
       <section className="card flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="font-semibold">Loja Tray</h2>
-          <p className="max-w-3xl text-sm text-[#6d645b]">
+          <h2 className="section-title">Loja Tray</h2>
+          <p className="max-w-3xl text-sm text-muted">
             Pedidos da loja entram pelo TRAYadaptor enquanto o painel está aberto. Cada rodada grava até 15 pedidos.
             Custo de compra, taxa de importação, estoque físico e compras de clientes continuam neste controle.
           </p>
@@ -145,18 +145,18 @@ export default async function HomePage({
       </section>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {QUEUES.map((queue, index) => (
-          <Link key={queue.id} href={`/pedidos?fila=${queue.id}`} className="card block">
-            <p className="text-sm text-[#6d645b]">{queue.label}</p>
-            <p className="num mt-1 text-3xl font-semibold">{counts[index]}</p>
-            <p className="mt-1 text-sm text-[#6d645b]">{queue.hint}</p>
+          <Link key={queue.id} href={`/pedidos?fila=${queue.id}`} className="card stat block">
+            <p className="kicker">{queue.label}</p>
+            <p className="num mt-2 text-4xl font-medium tracking-tight">{counts[index]}</p>
+            <p className="mt-1 text-sm text-muted">{queue.hint}</p>
           </Link>
         ))}
       </section>
       <section className="card overflow-x-auto">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Alertas de rastreio</h2>
-            <p className="mt-1 text-sm text-[#6d645b]">
+            <h2 className="section-title">Alertas de rastreio</h2>
+            <p className="mt-1 text-sm text-muted">
               {correiosReady
                 ? correiosLine(correios, params.correios, params.rastreios)
                 : "Falta usuário, senha ou cartão de postagem dos Correios."}
@@ -192,7 +192,7 @@ export default async function HomePage({
                 <td>
                   <div>{order.tracking_situation || "—"}</div>
                   {order.tracking_correios && order.tracking_correios !== order.tracking_situation ? (
-                    <div className="text-sm text-[#6d645b]">{order.tracking_correios}</div>
+                    <div className="text-sm text-muted">{order.tracking_correios}</div>
                   ) : null}
                 </td>
                 <td className="num">{brl(order.shipping_cost)}</td>

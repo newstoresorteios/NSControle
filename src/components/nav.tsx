@@ -13,17 +13,25 @@ const LINKS = [
   { href: "/calculadora", label: "Calculadora" },
 ];
 
-export function Nav() {
+export function Nav({ scroll = false }: { scroll?: boolean }) {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-wrap justify-center gap-1">
+    <nav
+      className={
+        scroll
+          ? "nav-scroll flex flex-nowrap items-center gap-x-5 overflow-x-auto py-2.5"
+          : "flex flex-wrap items-center justify-center gap-x-5 gap-y-2"
+      }
+    >
       {LINKS.map((link) => {
         const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
         return (
           <Link
             key={link.href}
             href={link.href}
-            className={`rounded-full px-3 py-1 text-sm ${active ? "bg-[#8f3d2b] text-white" : "text-[#1c1915] hover:bg-[#efe7db]"}`}
+            className={`shrink-0 border-b-2 px-0.5 py-1 text-[12px] uppercase tracking-[0.14em] text-ink ${
+              active ? "border-ink font-medium" : "border-transparent font-light hover:border-line"
+            }`}
           >
             {link.label}
           </Link>

@@ -20,12 +20,12 @@ export default async function ComprasPage({
   return (
     <div className="grid gap-5">
       <div>
-        <h1 className="text-2xl font-semibold">Compras de clientes</h1>
-        <p className="text-[#6d645b]">{data?.length ?? 0} relógios comprados de clientes.</p>
+        <h1 className="page-title">Compras de clientes</h1>
+        <p className="text-muted">{data?.length ?? 0} relógios comprados de clientes.</p>
       </div>
-      {params.erro ? <p className="text-sm text-[#8f3d2b]">Informe o nome do cliente.</p> : null}
+      {params.erro ? <p className="text-sm text-danger">Informe o nome do cliente.</p> : null}
       <details className="card">
-        <summary className="cursor-pointer font-semibold">Nova compra</summary>
+        <summary className="section-title">Nova compra</summary>
         <form action={createTradeIn} className="mt-3 grid gap-3 md:grid-cols-3">
           <label className="grid gap-1 text-sm">Cliente<input name="client_name" required /></label>
           <label className="grid gap-1 text-sm">Telefone<input name="phone" /></label>
@@ -58,7 +58,7 @@ export default async function ComprasPage({
               <tr key={item.id}>
                 <td>
                   {item.client_name}
-                  <div className="text-xs text-[#6d645b]">{item.phone}</div>
+                  <div className="text-xs text-muted">{item.phone}</div>
                 </td>
                 <td>{item.model || "—"}</td>
                 <td>{item.condition || "—"}</td>

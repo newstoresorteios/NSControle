@@ -75,13 +75,13 @@ export default async function FinanceiroPage({
     <div className="grid gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">{monthLabel(selected)}</h1>
-          <p className="text-[#6d645b]">
+          <h1 className="page-title">{monthLabel(selected)}</h1>
+          <p className="text-muted">
             Margem {percent(summary.margem)} · markup {summary.markup == null ? "—" : summary.markup.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
           </p>
         </div>
-        <form className="flex items-center gap-2" action="/financeiro">
-          <select name="month" defaultValue={selected}>
+        <form className="flex flex-wrap items-center gap-2" action="/financeiro">
+          <select name="month" defaultValue={selected} style={{ width: "auto" }}>
             {months.map((month) => (
               <option key={month} value={month}>
                 {monthLabel(month)}
@@ -91,12 +91,12 @@ export default async function FinanceiroPage({
           <button type="submit">Ver mês</button>
         </form>
       </div>
-      {params.erro ? <p className="text-sm text-[#8f3d2b]">Não foi possível salvar a meta.</p> : null}
+      {params.erro ? <p className="text-sm text-danger">Não foi possível salvar a meta.</p> : null}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map(([label, value]) => (
-          <article key={label} className="card">
-            <p className="text-sm text-[#6d645b]">{label}</p>
-            <p className="num mt-1 text-2xl font-semibold">{brl(value)}</p>
+          <article key={label} className="card stat">
+            <p className="kicker">{label}</p>
+            <p className="num mt-2 text-2xl font-medium tracking-tight">{brl(value)}</p>
           </article>
         ))}
       </section>

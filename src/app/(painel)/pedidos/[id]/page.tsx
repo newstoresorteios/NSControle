@@ -23,18 +23,18 @@ export default async function PedidoPage({
   return (
     <div className="grid gap-4">
       <div>
-        <Link href="/pedidos" className="text-sm text-[#6d645b]">
+        <Link href="/pedidos" className="text-sm text-muted">
           Voltar aos pedidos
         </Link>
-        <h1 className="text-2xl font-semibold">{order.label || order.order_key}</h1>
-        <p className="num text-[#6d645b]">Ganho calculado: {brl(order.gain_amount)}</p>
+        <h1 className="page-title mt-2">{order.label || order.order_key}</h1>
+        <p className="num text-muted">Ganho calculado: {brl(order.gain_amount)}</p>
       </div>
-      {query.ok ? <p className="text-sm text-[#1f4d3a]">Ficha atualizada.</p> : null}
-      {query.erro ? <p className="text-sm text-[#8f3d2b]">Não foi possível salvar.</p> : null}
+      {query.ok ? <p className="text-sm text-ok">Ficha atualizada.</p> : null}
+      {query.erro ? <p className="text-sm text-danger">Não foi possível salvar.</p> : null}
       {order.notes_tray ? (
         <section className="card text-sm">
-          <h2 className="font-semibold">Loja</h2>
-          <p className="mt-2 whitespace-pre-wrap text-[#6d645b]">{order.notes_tray}</p>
+          <h2 className="section-title">Loja</h2>
+          <p className="mt-2 whitespace-pre-wrap text-muted">{order.notes_tray}</p>
         </section>
       ) : null}
       <form action={updateOrder} className="card grid gap-3 md:grid-cols-3">

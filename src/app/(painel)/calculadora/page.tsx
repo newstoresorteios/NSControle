@@ -32,14 +32,14 @@ export default function CalculadoraPage() {
   return (
     <div className="grid gap-5">
       <div>
-        <h1 className="text-2xl font-semibold">Calculadora</h1>
-        <p className="text-[#6d645b]">
+        <h1 className="page-title">Calculadora</h1>
+        <p className="mt-2 text-muted">
           As mesmas contas da aba de cálculos: desconto da Europa, desconto de pagamento e PIX à vista.
         </p>
       </div>
       <section className="card grid gap-4 md:grid-cols-2">
         <div className="grid gap-3">
-          <h2 className="font-semibold">Custo Europa</h2>
+          <h2 className="section-title">Custo Europa</h2>
           <NumberField label="Valor do relógio (EUR)" value={eur} onChange={setEur} />
           <NumberField label="Desconto (%)" value={discount} onChange={setDiscount} />
           <NumberField label="Euro hoje" value={rate} onChange={setRate} />
@@ -47,12 +47,12 @@ export default function CalculadoraPage() {
         </div>
         <div className="grid content-end gap-2">
           <p>Valor final: {europe.finalEur.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} EUR</p>
-          <p className="text-2xl font-semibold">{brl(europe.brl)}</p>
+          <p className="text-3xl font-medium tracking-tight">{brl(europe.brl)}</p>
         </div>
       </section>
       <section className="card grid gap-4 md:grid-cols-2">
         <div className="grid gap-3">
-          <h2 className="font-semibold">Preço de venda</h2>
+          <h2 className="section-title">Preço de venda</h2>
           <NumberField label="Valor parcelado" value={parcelado} onChange={setParcelado} />
           <NumberField label="Desconto de pagamento (%)" value={paymentOff} onChange={setPaymentOff} />
           <NumberField label="PIX à vista (%)" value={pixOff} onChange={setPixOff} />
@@ -60,7 +60,7 @@ export default function CalculadoraPage() {
         <div className="grid content-end gap-2">
           <p>Depois do desconto de pagamento: {brl(sale.afterPayment)}</p>
           <p>PIX sobre o parcelado: {brl(sale.pixList)}</p>
-          <p className="text-2xl font-semibold">PIX depois do pagamento: {brl(sale.pixAfterPayment)}</p>
+          <p className="text-2xl font-medium tracking-tight">PIX depois do pagamento: {brl(sale.pixAfterPayment)}</p>
         </div>
       </section>
     </div>

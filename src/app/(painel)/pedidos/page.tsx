@@ -71,8 +71,8 @@ export default async function PedidosPage({
   return (
     <div className="grid gap-4">
       <div>
-        <h1 className="text-2xl font-semibold">Pedidos</h1>
-        <p className="text-[#6d645b]">
+        <h1 className="page-title">Pedidos</h1>
+        <p className="text-muted">
           {count ?? 0} linhas
           {params.fila ? ` · ${FILAS[params.fila] || params.fila}` : q ? " · busca na base inteira" : ` · ${hint}`}
           {" "}
@@ -80,10 +80,10 @@ export default async function PedidosPage({
         </p>
       </div>
       {params.erro === "duplicado" ? (
-        <p className="text-sm text-[#8f3d2b]">Esse número já existe. A busca abaixo mostra a ficha.</p>
+        <p className="text-sm text-danger">Esse número já existe. A busca abaixo mostra a ficha.</p>
       ) : null}
       {params.erro === "salvar" || params.erro === "numero" ? (
-        <p className="text-sm text-[#8f3d2b]">Não foi possível incluir a linha.</p>
+        <p className="text-sm text-danger">Não foi possível incluir a linha.</p>
       ) : null}
       <nav className="flex flex-wrap gap-2">
         {ABAS.map((item) => (
@@ -132,7 +132,7 @@ export default async function PedidosPage({
               Anterior
             </Link>
           ) : null}
-          <span className="self-center text-[#6d645b]">
+          <span className="self-center text-muted">
             Página {page} de {pages}
           </span>
           {page < pages ? (
@@ -143,7 +143,7 @@ export default async function PedidosPage({
         </div>
       ) : null}
       {rows.length < (count ?? 0) && !(aba === "entregues" && !q) ? (
-        <p className="text-sm text-[#6d645b]">Mostrando {rows.length} de {count}. Use a busca para achar o restante.</p>
+        <p className="text-sm text-muted">Mostrando {rows.length} de {count}. Use a busca para achar o restante.</p>
       ) : null}
     </div>
   );
