@@ -4,13 +4,17 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { Logo } from "@/components/logo";
 import { Nav } from "@/components/nav";
 import { requireTeam } from "@/lib/auth";
+import { scheduleCorreiosSync } from "@/lib/correios-sync";
 import { scheduleTraySync } from "@/lib/tray-sync";
 
 export const dynamic = "force-dynamic";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const { email } = await requireTeam();
-  after(() => scheduleTraySync());
+  after(async () => {
+    await scheduleTraySync();
+    await scheduleCorreiosSync();
+  });
   return (
     <div className="min-h-screen">
       <header className="border-b border-[#e2d9cc] bg-[#fffdf8]">

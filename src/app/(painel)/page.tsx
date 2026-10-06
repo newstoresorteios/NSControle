@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { syncCorreiosNow } from "@/app/(painel)/correios-actions";
 import { syncTrayNow } from "@/app/(painel)/tray-actions";
+import { correiosConfigured } from "@/lib/correios-client";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { brl } from "@/lib/format";
@@ -47,6 +49,35 @@ async function queueCount(id: (typeof QUEUES)[number]["id"]) {
   return rows[0]?.n ?? 0;
 }
 
+function correiosLine(
+  sync: { last_run_at: string | null; last_report: { updated?: number; missing?: number } | null } | null,
+  notice?: string,
+  rastreios?: string,
+) {
+  const flash = notice ? CORREIOS_MESSAGE[notice] : null;
+  const extra = notice === "ok" && rastreios && rastreios !== "0" ? ` ${rastreios} status gravados.` : "";
+  const when = sync?.last_run_at
+    ? new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+        timeZone: "America/Sao_Paulo",
+      }).format(new Date(sync.last_run_at))
+    : null;
+  const report = sync?.last_report;
+  const detail = when
+    ? `Última leitura dos Correios ${when}${report?.updated != null ? ` · ${report.updated} status` : ""}${report?.missing ? ` · ${report.missing} fora do contrato` : ""}.`
+    : "Ainda não houve leitura dos Correios.";
+  return [flash ? `${flash}${extra}` : null, detail].filter(Boolean).join(" ");
+}
+
+const CORREIOS_MESSAGE: Record<string, string> = {
+  ok: "Rastreios atualizados.",
+  aguardando: "Uma leitura dos Correios já está em andamento.",
+  limite: "Os Correios pediram uma pausa.",
+  erro: "Não foi possível falar com a API Rastro.",
+  nao_configurado: "Falta usuário, senha ou cartão de postagem dos Correios.",
+};
+
 const SYNC_MESSAGE: Record<string, string> = {
   ok: "Loja atualizada.",
   aguardando: "Uma atualização já está em andamento.",
@@ -58,21 +89,27 @@ const SYNC_MESSAGE: Record<string, string> = {
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ sync?: string; pedidos?: string }>;
+  searchParams: Promise<{ sync?: string; pedidos?: string; correios?: string; rastreios?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
   const configured = trayConfigured();
+  const correiosReady = correiosConfigured();
   const sql = db();
-  const [syncRows, counts, alerts] = await Promise.all([
+  const [syncRows, correiosRows, counts, alerts] = await Promise.all([
     sql<{ last_run_at: string | null; last_status: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
       select last_run_at, last_status, last_report from ctl_tray_sync
       where id = 'orders'
       limit 1
     `,
+    sql<{ last_run_at: string | null; last_report: { updated?: number; missing?: number } | null }[]>`
+      select last_run_at, last_report from ctl_tray_sync
+      where id = 'correios'
+      limit 1
+    `,
     Promise.all(QUEUES.map((queue) => queueCount(queue.id))),
-    sql<{ id: string; label: string | null; order_key: string; tracking_situation: string | null; tracking_code: string | null; origin: string | null; shipping_cost: string | null; import_tax: string | null }[]>`
-      select id, label, order_key, tracking_situation, tracking_code, origin, shipping_cost, import_tax
+    sql<{ id: string; label: string | null; order_key: string; tracking_situation: string | null; tracking_correios: string | null; tracking_code: string | null; origin: string | null; shipping_cost: string | null; import_tax: string | null }[]>`
+      select id, label, order_key, tracking_situation, tracking_correios, tracking_code, origin, shipping_cost, import_tax
       from ctl_orders
       where tracking_situation ilike '%DEVOLU%'
         or tracking_situation ilike '%ALF%'
@@ -83,6 +120,7 @@ export default async function HomePage({
     `,
   ]);
   const sync = syncRows[0] ?? null;
+  const correios = correiosRows[0] ?? null;
 
   return (
     <div className="grid gap-6">
@@ -115,7 +153,21 @@ export default async function HomePage({
         ))}
       </section>
       <section className="card overflow-x-auto">
-        <h2 className="mb-3 font-semibold">Alertas de rastreio</h2>
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Alertas de rastreio</h2>
+            <p className="mt-1 text-sm text-[#6d645b]">
+              {correiosReady
+                ? correiosLine(correios, params.correios, params.rastreios)
+                : "Falta usuário, senha ou cartão de postagem dos Correios."}
+            </p>
+          </div>
+          {correiosReady ? (
+            <form action={syncCorreiosNow}>
+              <button type="submit">Atualizar rastreios</button>
+            </form>
+          ) : null}
+        </div>
         <table>
           <thead>
             <tr>
@@ -137,7 +189,12 @@ export default async function HomePage({
                 </td>
                 <td>{order.origin || "—"}</td>
                 <td className="num">{order.tracking_code || "—"}</td>
-                <td>{order.tracking_situation || "—"}</td>
+                <td>
+                  <div>{order.tracking_situation || "—"}</div>
+                  {order.tracking_correios && order.tracking_correios !== order.tracking_situation ? (
+                    <div className="text-sm text-[#6d645b]">{order.tracking_correios}</div>
+                  ) : null}
+                </td>
                 <td className="num">{brl(order.shipping_cost)}</td>
                 <td className="num">{brl(order.import_tax)}</td>
               </tr>

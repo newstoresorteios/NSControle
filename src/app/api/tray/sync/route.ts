@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { runCorreiosSync } from "@/lib/correios-sync";
 import { runTraySync } from "@/lib/tray-sync";
 
 export const runtime = "nodejs";
@@ -31,7 +32,9 @@ async function handle(request: Request) {
   }
   const force = new URL(request.url).searchParams.get("force") === "1";
   const report = await runTraySync({ force });
-  return Response.json(report, { status: statusFor(report.reason, report.ok) });
+  const correios = await runCorreiosSync({ force });
+  const primary = report.reason === "nao_configurado" ? correios : report;
+  return Response.json({ ...report, correios }, { status: statusFor(primary.reason, primary.ok) });
 }
 
 export function GET(request: Request) {

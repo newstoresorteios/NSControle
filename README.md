@@ -28,4 +28,8 @@ Fora do painel, a cada 10 minutos:
 curl -X POST "$APP_URL/api/tray/sync" -H "Authorization: Bearer $TRAY_SYNC_SECRET"
 ```
 
-Esse caminho usa `SUPABASE_SERVICE_ROLE_KEY`. `?force=1` ignora a pausa de 8 minutos entre rodadas.
+Esse caminho usa `SUPABASE_SERVICE_ROLE_KEY`. `?force=1` ignora a pausa de 8 minutos entre rodadas. A mesma chamada também consulta o último evento na API Rastro dos Correios.
+
+## Rastreio (Correios)
+
+Com `CORREIOS_USUARIO`, `CORREIOS_SENHA` (código de acesso das APIs no CWS) e `CORREIOS_CARTAO`, o painel grava o último evento em `tracking_correios` e classifica a fila: alfândega, devolução, problema, sem retorno ou em trânsito. A API só responde objetos do contrato de postagem. Valor da taxa e dados de pagamento não vêm dessa consulta.
