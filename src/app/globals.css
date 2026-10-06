@@ -1,26 +1,144 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --paper: #f3efe6;
+  --ink: #1c1915;
+  --muted: #6d645b;
+  --line: #e2d9cc;
+  --card: #fffdf8;
+  --brick: #8f3d2b;
+  --brick-dark: #6e2c1e;
+  --pine: #1f4d3a;
+  --warn: #8a5a12;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), "Segoe UI", sans-serif;
+}
+
+input,
+select,
+textarea {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+  color: inherit;
+}
+
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+}
+
+textarea {
+  min-height: 5rem;
+}
+
+button,
+.button {
+  background: var(--brick);
+  color: white;
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  font-weight: 600;
+}
+
+button.secondary,
+.button.secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+th {
+  text-align: left;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0.55rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+}
+
+td {
+  padding: 0.55rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  padding: 1rem;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet {
+  max-height: calc(100vh - 15rem);
+  overflow: auto;
+  padding: 0;
+}
+
+.sheet table {
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.85rem;
+}
+
+.sheet th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card);
+  white-space: nowrap;
+}
+
+.sheet td {
+  padding: 0.28rem 0.3rem;
+  vertical-align: middle;
+}
+
+.sheet input:not([type="checkbox"]),
+.sheet select,
+.sheet textarea {
+  min-width: 9rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.85rem;
+  border-radius: 0.25rem;
+}
+
+.sheet .wide input,
+.sheet .wide textarea,
+.sheet .wide select {
+  min-width: 16rem;
+}
+
+.sheet .check {
+  width: 5.75rem;
+  min-width: 5.75rem;
+  text-align: center;
+}
+
+.sheet textarea {
+  min-height: 2.4rem;
+  resize: vertical;
+}
+
+.sheet input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
 }

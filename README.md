@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NS Controle
 
-## Getting Started
-
-First, run the development server:
+Painel interno de pedidos, financeiro, estoque, compras de clientes e cancelamentos.
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Copie `.env.example` para `.env.local` e preencha a URL e a chave anon do projeto Supabase. O acesso exige um usuário em `ctl_allowed_emails` e em Authentication.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Para reimportar a planilha:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pip install -r scripts/requirements.txt
+python scripts/import_pedidos.py
+```
 
-## Learn More
+A importação grava `data/import_report.json` e, com as variáveis do `.env.local`, substitui os dados do controle.
 
-To learn more about Next.js, take a look at the following resources:
+## Loja (TRAYadaptor)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Com `TRAY_ADAPTER_URL` e `TRAY_ADAPTER_TOKEN` (o mesmo Bearer interno do adaptador), o painel puxa pedidos da loja ao ser aberto e pelo botão **Atualizar agora**. Cada rodada grava até 15 pedidos em `ctl_orders` no fluxo Loja nova: status, produto, venda, pagamento, rastreio e cancelamento. Custo de compra, taxa de importação, estoque físico e compras de clientes não vêm da Tray.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Fora do painel, a cada 10 minutos:
 
-## Deploy on Vercel
+```bash
+curl -X POST "$APP_URL/api/tray/sync" -H "Authorization: Bearer $TRAY_SYNC_SECRET"
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Esse caminho usa `SUPABASE_SERVICE_ROLE_KEY`. `?force=1` ignora a pausa de 8 minutos entre rodadas.
