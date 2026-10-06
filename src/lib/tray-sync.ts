@@ -372,7 +372,7 @@ export async function runTraySync(options?: { force?: boolean }): Promise<SyncRe
 
 export async function scheduleTraySync() {
   try {
-    const bi = await runBiSync();
+    const bi = await runBiSync({ recent: true });
     if (bi.reason === "ok") {
       if (bi.upserted > 0) {
         revalidatePath("/");

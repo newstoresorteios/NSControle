@@ -2,7 +2,10 @@ import { db, insertRow, updateRow } from "@/lib/db";
 import { applyBiDraft, draftFromBi, type BiOrder, type BiShipment } from "@/lib/bi-map";
 import type { StoredOrder } from "@/lib/tray-map";
 
-const LOOKBACK_DAYS = 180;
+const FULL_LOOKBACK_DAYS = 180;
+const RECENT_LOOKBACK_DAYS = 2;
+const RECENT_COOLDOWN_MS = 25_000;
+const NUDGE_COOLDOWN_MS = 2 * 60 * 1000;
 const ORDER_COLUMNS =
   "id, order_key, flow, finance_month, label, origin, product_name, reference, commercial_status, sale_amount, payment_date, purchase_date, tracking_code, delivered, data_source, tray_modified_at";
 
@@ -40,21 +43,59 @@ function shipmentMap(payload: unknown) {
   return map;
 }
 
-export async function runBiSync(): Promise<BiSyncReport> {
+async function lastRun(id: string) {
+  const rows = await db()<{ last_run_at: string | null }[]>`
+    select last_run_at from ctl_tray_sync where id = ${id} limit 1
+  `;
+  const value = rows[0]?.last_run_at;
+  return value ? new Date(value).getTime() : 0;
+}
+
+async function nudgeBiOrders() {
+  const previous = await lastRun("bi-nudge");
+  if (previous && Date.now() - previous < NUDGE_COOLDOWN_MS) return;
+  await db()`
+    insert into ctl_tray_sync (id, last_run_at, last_status)
+    values ('bi-nudge', now(), 'ok')
+    on conflict (id) do update set last_run_at = now(), last_status = 'ok'
+  `;
+  await fetch(new URL("/api/v1/sync/orders", `${biUrl()}/`), {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
+  }).catch(() => undefined);
+}
+
+export async function runBiSync(options?: { recent?: boolean }): Promise<BiSyncReport> {
+  const recent = options?.recent !== false;
   const empty = { ok: false, reason: "erro", listed: 0, upserted: 0, skipped: 0 };
   try {
-    const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString().slice(0, 10);
+    if (recent) {
+      const previous = await lastRun("bi");
+      if (previous && Date.now() - previous < RECENT_COOLDOWN_MS) {
+        return { ok: true, reason: "ok", listed: 0, upserted: 0, skipped: 0 };
+      }
+    }
+    await nudgeBiOrders();
+    const days = recent ? RECENT_LOOKBACK_DAYS : FULL_LOOKBACK_DAYS;
+    const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
     const [ordersPayload, logisticsPayload] = await Promise.all([
-      biGet(`/api/v1/orders?limit=2000&days=${LOOKBACK_DAYS}`),
+      biGet(`/api/v1/orders?limit=${recent ? 200 : 2000}&days=${days}`),
       biGet(`/api/v1/analytics/logistics?page=1&pageSize=100&dateFrom=${since}&period=365d`),
     ]);
     const orders = Array.isArray(ordersPayload) ? (ordersPayload as BiOrder[]) : [];
     const shipments = shipmentMap(logisticsPayload);
-    const existingRows = await db()<StoredOrder[]>`
-      select ${db().unsafe(ORDER_COLUMNS)}
-      from ctl_orders
-      where flow = 'loja_nova'
-    `;
+    const keys = orders
+      .map((order) => String(order.number ?? order.id ?? "").trim())
+      .filter((key) => /^\d+$/.test(key));
+    const existingRows = keys.length
+      ? await db()<StoredOrder[]>`
+          select ${db().unsafe(ORDER_COLUMNS)}
+          from ctl_orders
+          where flow = 'loja_nova' and order_key in ${db()(keys)}
+        `
+      : [];
     const existing = new Map<string, StoredOrder>();
     for (const row of existingRows) {
       const current = existing.get(row.order_key);

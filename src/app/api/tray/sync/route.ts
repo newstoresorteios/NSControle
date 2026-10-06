@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { runBiSync } from "@/lib/bi-sync";
 import { runTraySync } from "@/lib/tray-sync";
 
 export const runtime = "nodejs";
@@ -29,6 +30,8 @@ async function handle(request: Request) {
   if (!authorized(request)) {
     return Response.json({ ok: false, reason: "nao_autorizado" }, { status: 401 });
   }
+  const bi = await runBiSync({ recent: false });
+  if (bi.reason === "ok") return Response.json(bi);
   const force = new URL(request.url).searchParams.get("force") === "1";
   const report = await runTraySync({ force });
   return Response.json(report, { status: statusFor(report.reason, report.ok) });

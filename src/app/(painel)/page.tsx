@@ -94,7 +94,7 @@ export default async function HomePage({
         <div>
           <h2 className="font-semibold">Loja Tray</h2>
           <p className="max-w-3xl text-sm text-[#6d645b]">
-            Pedidos, valor de venda, pagamento, rastreio e cancelamentos entram sozinhos a partir do TRAYadaptor, a cada 10 minutos.
+            Pedidos da loja entram sozinhos enquanto o painel está aberto, em cerca de um minuto.
             Custo de compra, taxa de importação, estoque físico e compras de clientes continuam neste controle.
           </p>
           <p className="mt-2 text-sm">{configured ? syncLine(sync, params.sync, params.pedidos) : "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN."}</p>
