@@ -257,12 +257,16 @@ function RastreioRow({ row }: { row: SheetOrder }) {
 }
 
 function OrderCell({ row, status }: { row: SheetOrder; status: SaveStatus }) {
+  const number = row.order_key;
+  const label = (row.label || "").trim();
+  const extra = label && label !== number && label !== `Pedido ${number}` ? label : null;
   return (
     <td className="min-w-36 whitespace-nowrap">
-      <Link href={`/pedidos/${row.id}`} className="underline">
-        {row.label || row.order_key}
+      <Link href={`/pedidos/${row.id}`} className="num underline">
+        {number}
       </Link>
-      <div className="text-xs text-muted">{status === "idle" ? "\u00a0" : STATUS_LABEL[status]}</div>
+      <div className="text-xs text-muted">{extra || (status === "idle" ? "\u00a0" : STATUS_LABEL[status])}</div>
+      {extra && status !== "idle" ? <div className="text-xs text-muted">{STATUS_LABEL[status]}</div> : null}
     </td>
   );
 }

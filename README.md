@@ -20,7 +20,7 @@ A importação grava `data/import_report.json` e, com as variáveis do `.env.loc
 
 ## Loja (TRAYadaptor)
 
-Com `TRAY_ADAPTER_URL` e `TRAY_ADAPTER_TOKEN` (o mesmo Bearer interno do adaptador), o painel puxa pedidos da loja ao ser aberto e pelo botão **Atualizar agora**. Cada rodada grava até 15 pedidos em `ctl_orders` no fluxo Loja nova: status, produto, venda, pagamento, rastreio e cancelamento. Custo de compra, taxa de importação, estoque físico e compras de clientes não vêm da Tray.
+Com `TRAY_ADAPTER_URL` e `TRAY_ADAPTER_TOKEN` (o mesmo Bearer interno do adaptador), o painel puxa pedidos da loja ao ser aberto e pelo botão **Atualizar agora**. Cada rodada grava até 15 pedidos em `ctl_orders` no fluxo Loja nova: status, produto, venda, pagamento, rastreio, cancelamento e o frete da loja em `shipping_cost`. Custo de compra, taxa de importação, estoque físico e compras de clientes não vêm da Tray. Um custo de envio já preenchido na planilha ou na ficha manual permanece.
 
 Fora do painel, a Vercel dispara `/api/tray/sync` uma vez por dia, às 8h de Brasília. No plano Hobby um cron mais frequente impede o deploy. Para rodar na hora:
 

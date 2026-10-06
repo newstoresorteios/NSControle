@@ -5,8 +5,8 @@ import {
   addIsoDays,
   buildTrayDraft,
   cancellationFromTray,
-  isSameTrayVersion,
   mergeTrayOrder,
+  needsTrayRefresh,
   orderIdFromEvent,
   orderKey,
   orderListFilters,
@@ -19,10 +19,10 @@ import {
 
 const BATCH = 15;
 const MAX_LIST_PAGES = 4;
-const INTERVAL_MS = 8 * 60 * 1000;
+const INTERVAL_MS = 90 * 1000;
 const LOCK_MS = 90 * 1000;
 const ORDER_COLUMNS =
-  "id, order_key, flow, finance_month, label, origin, product_name, reference, commercial_status, sale_amount, payment_date, purchase_date, tracking_code, delivered, data_source, tray_modified_at";
+  "id, order_key, flow, finance_month, label, origin, product_name, reference, commercial_status, sale_amount, payment_date, purchase_date, tracking_code, delivered, data_source, tray_modified_at, shipping_cost";
 
 export type SyncReport = {
   ok: boolean;
@@ -251,6 +251,14 @@ async function take(progress: Progress, seen: Set<string>, key: string, modified
 }
 
 async function execute(state: SyncState, progress: Progress, today: string) {
+  const filled = await db()`
+    update ctl_orders
+    set shipping_cost = substring(notes_tray from 'frete ([0-9]+([.][0-9]+)?)')::numeric
+    where shipping_cost is null
+      and substring(notes_tray from 'frete ([0-9]+([.][0-9]+)?)') ~ '^[0-9]'
+  `;
+  progress.upserted += filled.count;
+
   const seen = new Set<string>();
   let events: Array<Record<string, unknown>> = [];
   try {
@@ -281,31 +289,24 @@ async function execute(state: SyncState, progress: Progress, today: string) {
     today,
   });
   const sort = { enabled: true };
-  let pages = 0;
-  while (progress.fetched < BATCH && pages < MAX_LIST_PAGES) {
-    let orders: Array<Record<string, unknown>>;
+  const load = async (page: number) => {
     try {
-      orders = await listPage(progress.page, activeFilters, sort);
+      return await listPage(page, activeFilters, sort);
     } catch (error) {
       const rejected = error instanceof TrayRequestError && (error.status === 400 || error.status === 422);
       if (!rejected || Object.keys(activeFilters).length === 0) throw error;
       for (const key of Object.keys(activeFilters)) delete activeFilters[key];
-      orders = await listPage(progress.page, activeFilters, sort);
+      return listPage(page, activeFilters, sort);
     }
-    pages += 1;
+  };
+  const ingest = async (orders: Array<Record<string, unknown>>) => {
     progress.listed += orders.length;
-    if (orders.length === 0) {
-      progress.backfillDone = true;
-      progress.page = 1;
-      break;
-    }
     let pendingLeft = false;
     for (const order of orders) {
       const key = orderKey(order.id);
       if (!key || seen.has(key)) continue;
       const storedOrder = await findOrder(key);
-      const stored = storedOrder?.tray_modified_at ? String(storedOrder.tray_modified_at) : null;
-      if (isSameTrayVersion(stored, order.modified)) {
+      if (!needsTrayRefresh(storedOrder, order.modified)) {
         progress.skipped += 1;
         continue;
       }
@@ -315,6 +316,21 @@ async function execute(state: SyncState, progress: Progress, today: string) {
       }
       await take(progress, seen, key, order.modified);
     }
+    return pendingLeft;
+  };
+  if ((progress.page || 1) > 1 && progress.fetched < BATCH) {
+    await ingest(await load(1));
+  }
+  let pages = 0;
+  while (progress.fetched < BATCH && pages < MAX_LIST_PAGES) {
+    const orders = await load(progress.page);
+    pages += 1;
+    if (orders.length === 0) {
+      progress.backfillDone = true;
+      progress.page = 1;
+      break;
+    }
+    const pendingLeft = await ingest(orders);
     if (orders.length < 50) {
       if (!pendingLeft) {
         progress.backfillDone = true;

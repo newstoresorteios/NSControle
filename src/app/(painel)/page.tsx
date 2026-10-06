@@ -96,7 +96,7 @@ export default async function HomePage({
   const configured = trayConfigured();
   const correiosReady = correiosConfigured();
   const sql = db();
-  const [syncRows, correiosRows, counts, alerts] = await Promise.all([
+  const [syncRows, correiosRows, counts, alerts, recent] = await Promise.all([
     sql<{ last_run_at: string | null; last_status: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
       select last_run_at, last_status, last_report from ctl_tray_sync
       where id = 'orders'
@@ -118,6 +118,13 @@ export default async function HomePage({
       order by tracking_event_at desc nulls last
       limit 12
     `,
+    sql<{ id: string; order_key: string; label: string | null; origin: string | null; product_name: string | null; commercial_status: string | null; sale_amount: string | null }[]>`
+      select id, order_key, label, origin, product_name, commercial_status, sale_amount
+      from ctl_orders
+      where order_key ~ '^[0-9]{4,6}$'
+      order by order_key::numeric desc
+      limit 15
+    `,
   ]);
   const sync = syncRows[0] ?? null;
   const correios = correiosRows[0] ?? null;
@@ -133,7 +140,7 @@ export default async function HomePage({
           <h2 className="section-title">Loja Tray</h2>
           <p className="max-w-3xl text-sm text-muted">
             Pedidos da loja entram pelo TRAYadaptor enquanto o painel está aberto. Cada rodada grava até 15 pedidos.
-            Custo de compra, taxa de importação, estoque físico e compras de clientes continuam neste controle.
+            O frete cobrado na loja entra no custo de envio. Custo de compra, taxa de importação, estoque físico e compras de clientes continuam neste controle.
           </p>
           <p className="mt-2 text-sm">{configured ? syncLine(sync, params.sync, params.pedidos) : "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN."}</p>
         </div>
@@ -142,6 +149,48 @@ export default async function HomePage({
             <button type="submit">Atualizar agora</button>
           </form>
         ) : null}
+      </section>
+      <section className="card overflow-x-auto">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="section-title">Pedidos carregados</h2>
+            <p className="mt-1 text-sm text-muted">Os números mais altos da loja, do mais novo para o mais antigo.</p>
+          </div>
+          <Link className="button secondary" href="/pedidos">
+            Abrir lista
+          </Link>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Número</th>
+              <th>Status</th>
+              <th>Produto</th>
+              <th>Origem</th>
+              <th>Venda</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recent.map((order) => (
+              <tr key={order.id}>
+                <td>
+                  <Link href={`/pedidos/${order.id}`} className="num underline">
+                    {order.order_key}
+                  </Link>
+                </td>
+                <td>{order.commercial_status || "—"}</td>
+                <td>{order.product_name || order.label || "—"}</td>
+                <td>{order.origin || "—"}</td>
+                <td className="num">{brl(order.sale_amount)}</td>
+              </tr>
+            ))}
+            {!recent.length ? (
+              <tr>
+                <td colSpan={5}>Nenhum pedido numérico carregado.</td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
       </section>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {QUEUES.map((queue, index) => (
@@ -183,8 +232,8 @@ export default async function HomePage({
             {(alerts ?? []).map((order) => (
               <tr key={order.id}>
                 <td>
-                  <Link href={`/pedidos/${order.id}`} className="underline">
-                    {order.label || order.order_key}
+                  <Link href={`/pedidos/${order.id}`} className="num underline">
+                    {/^\d{4,6}$/.test(order.order_key) ? order.order_key : order.label || order.order_key}
                   </Link>
                 </td>
                 <td>{order.origin || "—"}</td>

@@ -5,6 +5,7 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { Logo } from "@/components/logo";
 import { Nav } from "@/components/nav";
 import { requireTeam } from "@/lib/auth";
+import { scheduleBiSync } from "@/lib/bi-sync";
 import { scheduleCorreiosSync } from "@/lib/correios-sync";
 import { scheduleTraySync } from "@/lib/tray-sync";
 
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const { email } = await requireTeam();
   after(async () => {
+    await scheduleBiSync();
     await scheduleTraySync();
     await scheduleCorreiosSync();
   });

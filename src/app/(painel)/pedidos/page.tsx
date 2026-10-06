@@ -50,7 +50,7 @@ export default async function PedidosPage({
       or supplier_ref ilike ${like}
       or notes_human ilike ${like}
     )
-    and (${q} <> '' or ${aba} <> 'pedidos' or (delivered = false and origin is not null))
+    and (${q} <> '' or ${aba} <> 'pedidos' or (delivered = false and (origin is not null or tray_modified_at is not null)))
     and (${q} <> '' or ${aba} <> 'acompanhamento' or commercial_status in ('A ENVIAR VINDI', 'A ENVIAR', 'ENVIADO'))
     and (${q} <> '' or ${aba} <> 'rastreio' or (delivered = false and tracking_code is not null))
     and (${q} <> '' or ${aba} <> 'entregues' or delivered = true)
@@ -60,7 +60,7 @@ export default async function PedidosPage({
     and (${params.fila ?? ""} <> 'vindi' or commercial_status = 'A ENVIAR VINDI')
     order by
       case when ${archive} then updated_at end desc nulls last,
-      case when ${archive} or order_key ~ '^[0-9]+$' then 1 else 0 end,
+      case when not ${archive} and order_key ~ '^[0-9]+$' then 0 else 1 end,
       case when not ${archive} and order_key ~ '^[0-9]+$' then order_key::numeric end desc nulls last,
       coalesce(label, order_key)
     limit ${PAGE_SIZE}

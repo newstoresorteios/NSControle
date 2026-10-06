@@ -1,13 +1,14 @@
+import { revalidatePath } from "next/cache";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { applyBiDraft, draftFromBi, type BiOrder, type BiShipment } from "@/lib/bi-map";
 import type { StoredOrder } from "@/lib/tray-map";
 
 const FULL_LOOKBACK_DAYS = 180;
-const RECENT_LOOKBACK_DAYS = 2;
+const RECENT_LOOKBACK_DAYS = 10;
 const RECENT_COOLDOWN_MS = 25_000;
 const NUDGE_COOLDOWN_MS = 2 * 60 * 1000;
 const ORDER_COLUMNS =
-  "id, order_key, flow, finance_month, label, origin, product_name, reference, commercial_status, sale_amount, payment_date, purchase_date, tracking_code, delivered, data_source, tray_modified_at";
+  "id, order_key, flow, finance_month, label, origin, product_name, reference, commercial_status, sale_amount, payment_date, purchase_date, tracking_code, delivered, data_source, tray_modified_at, shipping_cost";
 
 export type BiSyncReport = {
   ok: boolean;
@@ -93,15 +94,15 @@ export async function runBiSync(options?: { recent?: boolean }): Promise<BiSyncR
       ? await db()<StoredOrder[]>`
           select ${db().unsafe(ORDER_COLUMNS)}
           from ctl_orders
-          where flow = 'loja_nova' and order_key in ${db()(keys)}
+          where order_key in ${db()(keys)}
+          order by order_key,
+            case flow when 'encomenda' then 0 when 'loja_nova' then 1 else 2 end,
+            finance_month desc nulls last
         `
       : [];
     const existing = new Map<string, StoredOrder>();
     for (const row of existingRows) {
-      const current = existing.get(row.order_key);
-      if (!current || String(row.finance_month || "") > String(current.finance_month || "")) {
-        existing.set(row.order_key, row);
-      }
+      if (!existing.has(row.order_key)) existing.set(row.order_key, row);
     }
 
     let upserted = 0;
@@ -140,6 +141,20 @@ export async function runBiSync(options?: { recent?: boolean }): Promise<BiSyncR
   } catch (error) {
     console.error("bi sync", error instanceof Error ? error.message : "erro");
     return empty;
+  }
+}
+
+export async function scheduleBiSync() {
+  try {
+    const report = await runBiSync({ recent: true });
+    if (report.upserted > 0) {
+      revalidatePath("/");
+      revalidatePath("/pedidos");
+      revalidatePath("/financeiro");
+      revalidatePath("/cancelamentos");
+    }
+  } catch (error) {
+    console.error("bi sync", error instanceof Error ? error.message : "erro");
   }
 }
 

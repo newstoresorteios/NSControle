@@ -38,6 +38,7 @@ export type StoredOrder = {
   delivered: boolean;
   data_source: string | null;
   tray_modified_at: string | null;
+  shipping_cost?: number | string | null;
 };
 
 export type TrayDraft = {
@@ -61,6 +62,7 @@ export type TrayDraft = {
   payment_method: string | null;
   notes_tray: string;
   tray_modified_at: string | null;
+  shipping_cost: number | null;
 };
 
 export function orderKey(value: unknown): string | null {
@@ -132,6 +134,14 @@ export function isSameTrayVersion(stored: string | null, modified: unknown): boo
   const next = trayTime(modified);
   if (previous == null || next == null) return false;
   return previous >= next;
+}
+
+export function needsTrayRefresh(
+  existing: { tray_modified_at: string | null; origin: string | null } | null,
+  modified: unknown,
+) {
+  if (!existing?.origin) return true;
+  return !isSameTrayVersion(existing.tray_modified_at, modified);
 }
 
 export function normalizeStatus(value: unknown): string | null {
@@ -256,6 +266,7 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
     payment_method: paymentMethod,
     notes_tray: [head, lines.join("; ")].filter(Boolean).join("\n").slice(0, 4000),
     tray_modified_at: trayTimeIso(order.modified),
+    shipping_cost: shipmentValue,
   };
 }
 
@@ -306,6 +317,7 @@ export function mergeTrayOrder(
         data_source: "tray",
         tray_modified_at: draft.tray_modified_at,
         notes_tray: draft.notes_tray,
+        shipping_cost: draft.shipping_cost,
       },
     };
   }
@@ -327,6 +339,9 @@ export function mergeTrayOrder(
   if (draft.sale_explicit) row.sale_amount = draft.sale_amount;
   if (draft.payment_date) row.payment_date = draft.payment_date;
   if (!existing.purchase_date && draft.purchase_date) row.purchase_date = draft.purchase_date;
+  if (draft.shipping_cost != null && (existing.shipping_cost == null || existing.shipping_cost === "" || !sheetOwned)) {
+    row.shipping_cost = draft.shipping_cost;
+  }
   if (draft.tracking_code) row.tracking_code = draft.tracking_code;
   if (draft.tracking_event_at) row.tracking_event_at = draft.tracking_event_at;
   if (draft.delivered) row.delivered = true;

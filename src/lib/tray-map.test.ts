@@ -6,6 +6,7 @@ import {
   cancellationFromTray,
   isSameTrayVersion,
   mergeTrayOrder,
+  needsTrayRefresh,
   orderIdFromEvent,
   orderListFilters,
   type StoredOrder,
@@ -54,7 +55,7 @@ test("pedido pago da loja vira venda, rastreio e mês financeiro", () => {
   assert.match(draft.notes_tray, /frete 40.00/);
   assert.doesNotMatch(draft.notes_tray, /impostos/);
   const inserted = mergeTrayOrder(null, draft).row;
-  assert.equal(inserted.shipping_cost, undefined);
+  assert.equal(inserted.shipping_cost, 40);
   assert.equal(inserted.purchase_amount, undefined);
   assert.equal(inserted.import_tax, undefined);
   assert.equal(inserted.sale_amount, 1500.5);
@@ -117,11 +118,39 @@ test("atualização da loja não apaga custo nem origem já preenchidos", () => 
   assert.equal(merged.row.origin, undefined);
   assert.equal(merged.row.label, undefined);
   assert.equal(merged.row.purchase_amount, undefined);
+  assert.equal(merged.row.shipping_cost, 40);
   assert.equal(merged.row.finance_month, undefined);
   assert.equal(merged.row.data_source, undefined);
   assert.equal(merged.row.commercial_status, "A ENVIAR");
   assert.equal(merged.row.product_name, "Relógio");
   assert.equal(merged.row.purchase_date, undefined);
+});
+
+test("frete da loja preenche custo vazio e preserva o da planilha", () => {
+  const draft = buildTrayDraft(paid);
+  assert.ok(draft);
+  const sheet: StoredOrder = {
+    id: "abc",
+    order_key: "1200",
+    flow: "encomenda",
+    finance_month: "2026-10-01",
+    label: "Pedido 1200",
+    origin: "Europa",
+    product_name: null,
+    reference: null,
+    commercial_status: null,
+    sale_amount: 1500.5,
+    payment_date: null,
+    purchase_date: null,
+    tracking_code: null,
+    delivered: false,
+    data_source: "planilha",
+    tray_modified_at: null,
+    shipping_cost: "18.00",
+  };
+  assert.equal(mergeTrayOrder(sheet, draft).row.shipping_cost, undefined);
+  const fromTray: StoredOrder = { ...sheet, data_source: "tray", shipping_cost: "10.00" };
+  assert.equal(mergeTrayOrder(fromTray, draft).row.shipping_cost, 40);
 });
 
 test("planilha com status preenchido não volta para o status da loja", () => {
@@ -160,6 +189,15 @@ test("pedido já lido na mesma versão não precisa de nova consulta", () => {
   assert.equal(isSameTrayVersion(null, "2026-10-04 15:00:00"), false);
   assert.equal(isSameTrayVersion("2026-10-04 15:00:00+00", "2026-10-04 15:00:00"), true);
   assert.equal(isSameTrayVersion("2026-10-04 15:00:00+00", "2026-10-04 16:00:00"), false);
+  assert.equal(needsTrayRefresh(null, "2026-10-04 15:00:00"), true);
+  assert.equal(
+    needsTrayRefresh({ tray_modified_at: "2026-10-04T15:00:00.000Z", origin: null }, "2026-10-04 15:00:00"),
+    true,
+  );
+  assert.equal(
+    needsTrayRefresh({ tray_modified_at: "2026-10-04T15:00:00.000Z", origin: "Loja" }, "2026-10-04 15:00:00"),
+    false,
+  );
 });
 
 test("filtros e eventos de pedido", () => {
