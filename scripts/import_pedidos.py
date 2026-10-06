@@ -872,7 +872,13 @@ def main():
     )
     printable = dict(report)
     print(json.dumps(printable, ensure_ascii=False, indent=2))
-    if os.environ.get("SUPABASE_URL"):
+    if os.environ.get("DATABASE_URL"):
+        import subprocess
+
+        payload_path = data_dir / "import_payload.json"
+        subprocess.run(["node", "scripts/load_neon.mjs", str(payload_path)], cwd=ROOT, check=True)
+        print("carga concluida")
+    elif os.environ.get("SUPABASE_URL"):
         load(payload)
         print("carga concluida")
 

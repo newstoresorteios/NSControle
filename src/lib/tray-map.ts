@@ -115,7 +115,9 @@ export function trayTime(value: unknown): number | null {
   const text = String(value).trim();
   if (!text || text.startsWith("0000")) return null;
   let normalized = text.includes("T") ? text : text.replace(" ", "T");
-  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized)) normalized += "Z";
+  normalized = normalized.replace(/([+-])(\d{2})(\d{2})$/, "$1$2:$3");
+  normalized = normalized.replace(/([+-])(\d{2})$/, "$1$2:00");
+  if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(normalized)) normalized += "Z";
   const time = new Date(normalized).getTime();
   return Number.isNaN(time) ? null : time;
 }
@@ -308,17 +310,20 @@ export function mergeTrayOrder(
     };
   }
 
+  const sheetOwned = existing.data_source === "planilha" || existing.data_source === "manual";
   const row: Record<string, unknown> = {
-    data_source: "tray",
     notes_tray: draft.notes_tray,
     tray_modified_at: draft.tray_modified_at,
   };
+  if (!sheetOwned) row.data_source = "tray";
   const label = (existing.label || "").trim();
   if (!label || label === existing.order_key) row.label = draft.label;
   if (!existing.origin) row.origin = draft.origin;
   if (draft.product_name) row.product_name = draft.product_name;
   if (draft.reference) row.reference = draft.reference;
-  if (draft.commercial_status) row.commercial_status = draft.commercial_status;
+  if (draft.commercial_status && (!sheetOwned || !existing.commercial_status)) {
+    row.commercial_status = draft.commercial_status;
+  }
   if (draft.sale_explicit) row.sale_amount = draft.sale_amount;
   if (draft.payment_date) row.payment_date = draft.payment_date;
   if (!existing.purchase_date && draft.purchase_date) row.purchase_date = draft.purchase_date;

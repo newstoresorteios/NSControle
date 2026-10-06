@@ -154,12 +154,13 @@ async function listPage(
   }
 }
 
-async function findLoja(key: string): Promise<StoredOrder | null> {
+async function findOrder(key: string): Promise<StoredOrder | null> {
   const rows = await db()<StoredOrder[]>`
     select ${db().unsafe(ORDER_COLUMNS)}
     from ctl_orders
-    where order_key = ${key} and flow = 'loja_nova'
-    order by finance_month desc nulls last
+    where order_key = ${key}
+    order by case flow when 'encomenda' then 0 when 'loja_nova' then 1 else 2 end,
+             finance_month desc nulls last
     limit 1
   `;
   return rows[0] ?? null;
@@ -177,7 +178,7 @@ async function writeOrder(existing: StoredOrder | null, draft: TrayDraft): Promi
       return String(inserted.id);
     } catch (error) {
       if (!isUnique(error)) throw new TrayRequestError("order_insert", 500);
-      const again = await findLoja(draft.order_key);
+      const again = await findOrder(draft.order_key);
       if (!again) throw new TrayRequestError("order_insert", 500);
       return saveOrder(again.id, mergeTrayOrder(again, draft).row);
     }
@@ -223,7 +224,7 @@ async function pullOne(key: string, listedModified: unknown) {
   const draft = buildTrayDraft(complete as TrayComplete);
   if (!draft) return { upserted: false, cancellation: false };
   if (!draft.tray_modified_at) draft.tray_modified_at = trayTimeIso(listedModified);
-  const existing = await findLoja(key);
+  const existing = await findOrder(key);
   const orderId = await writeOrder(existing, draft);
   const cancellation = await writeCancellation(draft, orderId);
   if (draft.tracking_code && orderId) {
@@ -302,12 +303,8 @@ async function execute(state: SyncState, progress: Progress, today: string) {
     for (const order of orders) {
       const key = orderKey(order.id);
       if (!key || seen.has(key)) continue;
-      const storedRows = await db()<{ tray_modified_at: string | null }[]>`
-        select tray_modified_at from ctl_orders
-        where order_key = ${key} and flow = 'loja_nova'
-        limit 1
-      `;
-      const stored = storedRows[0]?.tray_modified_at ? String(storedRows[0].tray_modified_at) : null;
+      const storedOrder = await findOrder(key);
+      const stored = storedOrder?.tray_modified_at ? String(storedOrder.tray_modified_at) : null;
       if (isSameTrayVersion(stored, order.modified)) {
         progress.skipped += 1;
         continue;

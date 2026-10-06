@@ -118,8 +118,38 @@ test("atualização da loja não apaga custo nem origem já preenchidos", () => 
   assert.equal(merged.row.label, undefined);
   assert.equal(merged.row.purchase_amount, undefined);
   assert.equal(merged.row.finance_month, undefined);
+  assert.equal(merged.row.data_source, undefined);
+  assert.equal(merged.row.commercial_status, "A ENVIAR");
   assert.equal(merged.row.product_name, "Relógio");
   assert.equal(merged.row.purchase_date, undefined);
+});
+
+test("planilha com status preenchido não volta para o status da loja", () => {
+  const draft = buildTrayDraft(paid);
+  assert.ok(draft);
+  const existing: StoredOrder = {
+    id: "abc",
+    order_key: "1200",
+    flow: "encomenda",
+    finance_month: "2026-10-01",
+    label: "Pedido 1200",
+    origin: "Europa",
+    product_name: "Relógio",
+    reference: null,
+    commercial_status: "ENVIADO",
+    sale_amount: 1500.5,
+    payment_date: "2026-10-03",
+    purchase_date: "2026-10-03",
+    tracking_code: "AB123456789BR",
+    delivered: false,
+    data_source: "planilha",
+    tray_modified_at: null,
+  };
+  const merged = mergeTrayOrder(existing, draft);
+  assert.equal(merged.row.commercial_status, undefined);
+  assert.equal(merged.row.data_source, undefined);
+  assert.equal(merged.row.finance_month, undefined);
+  assert.equal(merged.row.tray_modified_at, draft.tray_modified_at);
 });
 
 test("pedido já lido na mesma versão não precisa de nova consulta", () => {
@@ -128,6 +158,8 @@ test("pedido já lido na mesma versão não precisa de nova consulta", () => {
   assert.equal(isSameTrayVersion(draft.tray_modified_at, "2026-10-04 15:00:00"), true);
   assert.equal(isSameTrayVersion(draft.tray_modified_at, "2026-10-04 16:00:00"), false);
   assert.equal(isSameTrayVersion(null, "2026-10-04 15:00:00"), false);
+  assert.equal(isSameTrayVersion("2026-10-04 15:00:00+00", "2026-10-04 15:00:00"), true);
+  assert.equal(isSameTrayVersion("2026-10-04 15:00:00+00", "2026-10-04 16:00:00"), false);
 });
 
 test("filtros e eventos de pedido", () => {
