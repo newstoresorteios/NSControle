@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { TrayRequestError, trayConfigured, trayGet } from "@/lib/tray-client";
 import {
   addIsoDays,
@@ -23,9 +24,7 @@ const LOCK_MS = 90 * 1000;
 const ORDER_COLUMNS =
   "id, order_key, flow, finance_month, label, origin, product_name, reference, commercial_status, sale_amount, payment_date, purchase_date, tracking_code, delivered, data_source, tray_modified_at";
 
-type SyncDb = {
-  from: (table: string) => any;
-};
+type SyncDb = SupabaseClient;
 
 export type SyncReport = {
   ok: boolean;
