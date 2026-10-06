@@ -4,7 +4,7 @@ import { OrderSheet, type SheetMode, type SheetOrder } from "@/components/order-
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-const PAGE_SIZE = 60;
+const PAGE_SIZE = 30;
 
 const ABAS: { id: SheetMode; label: string; hint: string }[] = [
   { id: "pedidos", label: "Pedidos", hint: "Compras em aberto: origem, comprado, CPF, taxa e entregue." },
@@ -35,7 +35,7 @@ export default async function PedidosPage({
   await requireTeam();
   const safe = q.replace(/[%*,]/g, "");
   const like = `%${safe}%`;
-  const paginate = aba === "entregues" && !q;
+  const archive = aba === "entregues" && !q;
   const found = await db()<Array<RawOrder & { total_count: number }>>`
     select ${db().unsafe(COLUMNS)}, count(*) over()::int as total_count
     from ctl_orders
@@ -58,13 +58,16 @@ export default async function PedidosPage({
     and (${params.fila ?? ""} <> 'alfandega' or tracking_situation ilike '%ALF%')
     and (${params.fila ?? ""} <> 'sem_retorno' or tracking_situation ilike '%Sem retorno%')
     and (${params.fila ?? ""} <> 'vindi' or commercial_status = 'A ENVIAR VINDI')
-    order by case when ${paginate} then updated_at end desc nulls last
-    limit ${paginate ? PAGE_SIZE : 500}
-    offset ${paginate ? (page - 1) * PAGE_SIZE : 0}
+    order by
+      case when ${archive} then updated_at end desc nulls last,
+      case when ${archive} or order_key ~ '^[0-9]+$' then 1 else 0 end,
+      case when not ${archive} and order_key ~ '^[0-9]+$' then order_key::numeric end desc nulls last,
+      coalesce(label, order_key)
+    limit ${PAGE_SIZE}
+    offset ${(page - 1) * PAGE_SIZE}
   `;
   const count = found[0]?.total_count ?? 0;
   const rows = found.map((order) => toSheetOrder(order));
-  if (!(aba === "entregues" && !q)) rows.sort(compareOrders);
   const pages = Math.max(Math.ceil((count ?? 0) / PAGE_SIZE), 1);
   const hint = ABAS.find((item) => item.id === aba)?.hint;
 
@@ -73,8 +76,9 @@ export default async function PedidosPage({
       <div>
         <h1 className="page-title">Pedidos</h1>
         <p className="text-muted">
-          {count ?? 0} linhas
-          {params.fila ? ` · ${FILAS[params.fila] || params.fila}` : q ? " · busca na base inteira" : ` · ${hint}`}
+          {count} no banco
+          {params.fila ? ` · ${FILAS[params.fila] || params.fila}` : q ? " · busca" : ` · ${hint}`}
+          {pages > 1 ? ` · página ${Math.min(page, pages)} de ${pages}` : ""}
           {" "}
           A edição grava ao sair do campo.
         </p>
@@ -125,7 +129,7 @@ export default async function PedidosPage({
         </form>
       ) : null}
       <OrderSheet rows={rows} mode={aba} />
-      {aba === "entregues" && !q ? (
+      {pages > 1 ? (
         <div className="flex gap-3 text-sm">
           {page > 1 ? (
             <Link className="button secondary" href={href({ ...params, aba, page: page - 1 })}>
@@ -133,7 +137,7 @@ export default async function PedidosPage({
             </Link>
           ) : null}
           <span className="self-center text-muted">
-            Página {page} de {pages}
+            {rows.length} nesta página · {count} no banco
           </span>
           {page < pages ? (
             <Link className="button secondary" href={href({ ...params, aba, page: page + 1 })}>
@@ -141,9 +145,6 @@ export default async function PedidosPage({
             </Link>
           ) : null}
         </div>
-      ) : null}
-      {rows.length < (count ?? 0) && !(aba === "entregues" && !q) ? (
-        <p className="text-sm text-muted">Mostrando {rows.length} de {count}. Use a busca para achar o restante.</p>
       ) : null}
     </div>
   );
@@ -166,15 +167,6 @@ function resolveAba(aba: string | undefined, fila: string | undefined): SheetMod
   if (fila === "vindi") return "acompanhamento";
   if (fila) return "rastreio";
   return "pedidos";
-}
-
-function compareOrders(a: SheetOrder, b: SheetOrder) {
-  const group = (key: string) => (/^\d+$/.test(key) ? 1 : 0);
-  const ga = group(a.order_key);
-  const gb = group(b.order_key);
-  if (ga !== gb) return ga - gb;
-  if (ga === 1) return Number(b.order_key) - Number(a.order_key);
-  return (a.label || a.order_key).localeCompare(b.label || b.order_key, "pt-BR");
 }
 
 function daysSince(value: string | null) {
