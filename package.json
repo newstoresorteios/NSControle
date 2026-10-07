@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test src/lib/tray-map.test.ts src/lib/correios-map.test.ts src/lib/finance.test.ts"
+    "test": "node --experimental-strip-types --test src/lib/tray-map.test.ts src/lib/correios-map.test.ts src/lib/finance.test.ts src/lib/order-filters.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

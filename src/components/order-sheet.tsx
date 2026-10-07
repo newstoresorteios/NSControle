@@ -34,7 +34,15 @@ export type SheetOrder = {
 
 const COMMERCIAL = ["AGUARDANDO PAGAMENTO", "A ENVIAR VINDI", "A ENVIAR", "ENVIADO", "FINALIZADO", "ENTREGUE", "CANCELADO"];
 
-export function OrderSheet({ rows, mode }: { rows: SheetOrder[]; mode: SheetMode }) {
+export function OrderSheet({
+  rows,
+  mode,
+  emptyLabel = "Nenhuma linha nesta aba.",
+}: {
+  rows: SheetOrder[];
+  mode: SheetMode;
+  emptyLabel?: string;
+}) {
   return (
     <div className="card sheet">
       <table>
@@ -55,7 +63,7 @@ export function OrderSheet({ rows, mode }: { rows: SheetOrder[]; mode: SheetMode
           ))}
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={12}>Nenhuma linha nesta aba.</td>
+              <td colSpan={12}>{emptyLabel}</td>
             </tr>
           ) : null}
         </tbody>
@@ -86,8 +94,7 @@ function PedidosHead() {
       <th className="check" title="CPF vinculado">CPF</th>
       <th className="check" title="Taxa paga">Taxa</th>
       <th className="check">Entregue</th>
-      <th>Obs robô</th>
-      <th>Obs humana</th>
+      <th>Obs</th>
     </>
   );
 }
@@ -122,10 +129,11 @@ function PedidosRow({ row }: { row: SheetOrder }) {
         <CheckCell name="delivered" checked={row.delivered} onSave={save.run} />
       </td>
       <td className="wide">
-        <AreaCell name="notes_robot" value={row.notes_robot} onSave={save.run} />
-      </td>
-      <td className="wide">
-        <AreaCell name="notes_human" value={row.notes_human} onSave={save.run} />
+        <AreaCell
+          name="notes_human"
+          value={sheetNote(row)}
+          onSave={(patch) => save.run({ ...patch, notes_robot: "" })}
+        />
       </td>
     </>
   );
@@ -254,6 +262,13 @@ function RastreioRow({ row }: { row: SheetOrder }) {
       </td>
     </>
   );
+}
+
+function sheetNote(row: SheetOrder) {
+  const human = (row.notes_human || "").trim();
+  const robot = (row.notes_robot || "").trim();
+  if (human && robot && human !== robot) return `${human}\n${robot}`;
+  return human || robot;
 }
 
 function OrderCell({ row, status }: { row: SheetOrder; status: SaveStatus }) {

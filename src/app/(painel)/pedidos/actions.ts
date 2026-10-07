@@ -94,7 +94,7 @@ export async function addSheetRow(formData: FormData) {
   const orderKey = sheetKey(label);
   const existing = await db()<{ id: string }[]>`select id from ctl_orders where order_key = ${orderKey} limit 1`;
   if (existing.length > 0) {
-    redirect(`/pedidos?aba=pedidos&q=${encodeURIComponent(orderKey)}&erro=duplicado`);
+    redirect(`/pedidos?aba=pedidos&numero=${encodeURIComponent(orderKey)}&erro=duplicado`);
   }
   try {
     await insertRow("ctl_orders", {

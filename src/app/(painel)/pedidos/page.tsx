@@ -3,6 +3,7 @@ import { addSheetRow } from "@/app/(painel)/pedidos/actions";
 import { OrderSheet, type SheetMode, type SheetOrder } from "@/components/order-sheet";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ACCENTS, PLAIN, idPresence, likePattern, orderDigits } from "@/lib/order-filters";
 
 const PAGE_SIZE = 30;
 
@@ -26,34 +27,69 @@ const COLUMNS =
 export default async function PedidosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; fila?: string; aba?: string; page?: string; erro?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    numero?: string;
+    nome?: string;
+    idref?: string;
+    com_id?: string;
+    fila?: string;
+    aba?: string;
+    page?: string;
+    erro?: string;
+  }>;
 }) {
   const params = await searchParams;
   const aba = resolveAba(params.aba, params.fila);
   const page = Math.max(Number(params.page || 1), 1);
-  const q = (params.q || "").trim();
+  const numero = (params.numero || "").trim();
+  const nome = (params.nome || "").trim();
+  const idref = (params.idref || "").trim();
+  const comId = idPresence(params.com_id);
+  const legacy = numero || nome || idref || comId ? "" : (params.q || "").trim();
+  const numeroLike = likePattern(numero);
+  const nomeLike = likePattern(nome);
+  const idLike = likePattern(idref);
+  const legacyLike = likePattern(legacy);
+  const digits = orderDigits(numero);
+  const textSearch = Boolean(numero || nome || idref || legacy);
   await requireTeam();
-  const safe = q.replace(/[%*,]/g, "");
-  const like = `%${safe}%`;
-  const archive = aba === "entregues" && !q;
+  const archive = aba === "entregues" && !textSearch;
   const found = await db()<Array<RawOrder & { total_count: number }>>`
     select ${db().unsafe(COLUMNS)}, count(*) over()::int as total_count
     from ctl_orders
     where (
-      ${q} = ''
-      or order_key ilike ${like}
-      or label ilike ${like}
-      or product_name ilike ${like}
-      or reference ilike ${like}
-      or tracking_code ilike ${like}
-      or origin ilike ${like}
-      or supplier_ref ilike ${like}
-      or notes_human ilike ${like}
+      ${numero} = ''
+      or order_key ilike ${numeroLike}
+      or translate(lower(coalesce(label, '')), ${ACCENTS}, ${PLAIN}) ilike ${numeroLike}
+      or (${digits} <> '' and order_key = ${digits})
     )
-    and (${q} <> '' or ${aba} <> 'pedidos' or (delivered = false and (origin is not null or tray_modified_at is not null)))
-    and (${q} <> '' or ${aba} <> 'acompanhamento' or commercial_status in ('A ENVIAR VINDI', 'A ENVIAR', 'ENVIADO'))
-    and (${q} <> '' or ${aba} <> 'rastreio' or (delivered = false and tracking_code is not null))
-    and (${q} <> '' or ${aba} <> 'entregues' or delivered = true)
+    and (
+      ${nome} = ''
+      or translate(lower(coalesce(product_name, '')), ${ACCENTS}, ${PLAIN}) ilike ${nomeLike}
+    )
+    and (
+      ${idref} = ''
+      or translate(lower(coalesce(supplier_ref, '')), ${ACCENTS}, ${PLAIN}) ilike ${idLike}
+    )
+    and (
+      ${comId} = ''
+      or (${comId} = 'com' and nullif(btrim(coalesce(supplier_ref, '')), '') is not null)
+      or (${comId} = 'sem' and nullif(btrim(coalesce(supplier_ref, '')), '') is null)
+    )
+    and (
+      ${legacy} = ''
+      or order_key ilike ${legacyLike}
+      or translate(lower(coalesce(label, '')), ${ACCENTS}, ${PLAIN}) ilike ${legacyLike}
+      or translate(lower(coalesce(product_name, '')), ${ACCENTS}, ${PLAIN}) ilike ${legacyLike}
+      or translate(lower(coalesce(supplier_ref, '')), ${ACCENTS}, ${PLAIN}) ilike ${legacyLike}
+      or tracking_code ilike ${legacyLike}
+      or translate(lower(coalesce(origin, '')), ${ACCENTS}, ${PLAIN}) ilike ${legacyLike}
+    )
+    and (${textSearch} or ${aba} <> 'pedidos' or (delivered = false and (origin is not null or tray_modified_at is not null)))
+    and (${textSearch} or ${aba} <> 'acompanhamento' or commercial_status in ('A ENVIAR VINDI', 'A ENVIAR', 'ENVIADO'))
+    and (${textSearch} or ${aba} <> 'rastreio' or (delivered = false and tracking_code is not null))
+    and (${textSearch} or ${aba} <> 'entregues' or delivered = true)
     and (${params.fila ?? ""} <> 'devolucao' or tracking_situation ilike '%DEVOLU%')
     and (${params.fila ?? ""} <> 'alfandega' or tracking_situation ilike '%ALF%')
     and (${params.fila ?? ""} <> 'sem_retorno' or tracking_situation ilike '%Sem retorno%')
@@ -70,6 +106,9 @@ export default async function PedidosPage({
   const rows = found.map((order) => toSheetOrder(order));
   const pages = Math.max(Math.ceil((count ?? 0) / PAGE_SIZE), 1);
   const hint = ABAS.find((item) => item.id === aba)?.hint;
+  const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila };
+  const filtering = Boolean(numero || nome || idref || comId || legacy || params.fila);
+  const summary = filterSummary({ numero, nome, idref, comId, legacy, fila: params.fila });
 
   return (
     <div className="grid gap-4">
@@ -77,7 +116,7 @@ export default async function PedidosPage({
         <h1 className="page-title">Pedidos</h1>
         <p className="text-muted">
           {count} no banco
-          {params.fila ? ` · ${FILAS[params.fila] || params.fila}` : q ? " · busca" : ` · ${hint}`}
+          {summary ? ` · ${summary}` : ` · ${hint}`}
           {pages > 1 ? ` · página ${Math.min(page, pages)} de ${pages}` : ""}
           {" "}
           A edição grava ao sair do campo.
@@ -93,25 +132,49 @@ export default async function PedidosPage({
         {ABAS.map((item) => (
           <Link
             key={item.id}
-            href={href({ ...params, aba: item.id, page: undefined })}
+            href={href({ ...listQuery, aba: item.id })}
             className={item.id === aba ? "button" : "button secondary"}
           >
             {item.label}
           </Link>
         ))}
       </nav>
-      <form className="card grid items-center gap-3 md:grid-cols-[1fr_auto_auto]" action="/pedidos">
-        <input name="q" defaultValue={q} placeholder="Número, produto, origem, ID ou rastreio" />
+      <form
+        className="card grid items-end gap-3 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_10rem_auto]"
+        action="/pedidos"
+      >
+        <label className="grid gap-1 text-sm">
+          Número
+          <input name="numero" defaultValue={numero || legacy} placeholder="26312" autoComplete="off" />
+        </label>
+        <label className="grid gap-1 text-sm">
+          Nome
+          <input name="nome" defaultValue={nome} placeholder="produto" autoComplete="off" />
+        </label>
+        <label className="grid gap-1 text-sm">
+          ID
+          <input name="idref" defaultValue={idref} placeholder="código" autoComplete="off" />
+        </label>
+        <label className="grid gap-1 text-sm">
+          Tem ID
+          <select name="com_id" defaultValue={comId}>
+            <option value="">Todos</option>
+            <option value="com">Com ID</option>
+            <option value="sem">Sem ID</option>
+          </select>
+        </label>
         <input type="hidden" name="aba" value={aba} />
         {params.fila ? <input type="hidden" name="fila" value={params.fila} /> : null}
-        <button type="submit">Buscar</button>
-        {params.fila ? (
-          <Link className="button secondary text-center" href={href({ q, aba })}>
-            Limpar fila
-          </Link>
-        ) : null}
+        <div className="flex gap-2">
+          <button type="submit">Buscar</button>
+          {filtering ? (
+            <Link className="button secondary" href={href({ aba })}>
+              Limpar
+            </Link>
+          ) : null}
+        </div>
       </form>
-      {aba === "pedidos" && !q ? (
+      {aba === "pedidos" && !textSearch && !comId ? (
         <form action={addSheetRow} className="card grid items-end gap-3 md:grid-cols-[1fr_12rem_1fr_auto]">
           <label className="grid gap-1 text-sm">
             Nova linha
@@ -128,11 +191,15 @@ export default async function PedidosPage({
           <button type="submit">Incluir</button>
         </form>
       ) : null}
-      <OrderSheet rows={rows} mode={aba} />
+      <OrderSheet
+        rows={rows}
+        mode={aba}
+        emptyLabel={filtering ? "Nenhum pedido com esses filtros." : undefined}
+      />
       {pages > 1 ? (
         <div className="flex gap-3 text-sm">
           {page > 1 ? (
-            <Link className="button secondary" href={href({ ...params, aba, page: page - 1 })}>
+            <Link className="button secondary" href={href({ ...listQuery, page: page - 1 })}>
               Anterior
             </Link>
           ) : null}
@@ -140,7 +207,7 @@ export default async function PedidosPage({
             {rows.length} nesta página · {count} no banco
           </span>
           {page < pages ? (
-            <Link className="button secondary" href={href({ ...params, aba, page: page + 1 })}>
+            <Link className="button secondary" href={href({ ...listQuery, page: page + 1 })}>
               Próxima
             </Link>
           ) : null}
@@ -197,10 +264,41 @@ function saoPauloLocal(value: string | null) {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
 }
 
-function href(params: { q?: string; fila?: string; aba?: string; page?: number }) {
+function filterSummary(filters: {
+  numero: string;
+  nome: string;
+  idref: string;
+  comId: string;
+  legacy: string;
+  fila?: string;
+}) {
+  if (filters.fila) return FILAS[filters.fila] || filters.fila;
+  const parts = [
+    filters.numero ? `número ${filters.numero}` : "",
+    filters.nome ? `nome ${filters.nome}` : "",
+    filters.idref ? `ID ${filters.idref}` : "",
+    filters.comId === "com" ? "com ID" : "",
+    filters.comId === "sem" ? "sem ID" : "",
+    filters.legacy ? "busca" : "",
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
+function href(params: {
+  numero?: string;
+  nome?: string;
+  idref?: string;
+  com_id?: string;
+  fila?: string;
+  aba?: string;
+  page?: number;
+}) {
   const search = new URLSearchParams();
   if (params.aba) search.set("aba", params.aba);
-  if (params.q) search.set("q", params.q);
+  if (params.numero) search.set("numero", params.numero);
+  if (params.nome) search.set("nome", params.nome);
+  if (params.idref) search.set("idref", params.idref);
+  if (params.com_id === "com" || params.com_id === "sem") search.set("com_id", params.com_id);
   if (params.fila) search.set("fila", params.fila);
   if (params.page && params.page > 1) search.set("page", String(params.page));
   const query = search.toString();
