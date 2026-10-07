@@ -114,6 +114,27 @@ button:hover,
   background: #000;
 }
 
+button:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.spinner {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.55rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: white;
+  border-radius: 999px;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 button.secondary,
 .button.secondary {
   background: white;

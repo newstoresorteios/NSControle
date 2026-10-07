@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { syncCorreiosNow } from "@/app/(painel)/correios-actions";
 import { syncTrayNow } from "@/app/(painel)/tray-actions";
+import { SyncButton, SyncStatus } from "@/components/sync-button";
 import { correiosConfigured } from "@/lib/correios-client";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -14,13 +15,9 @@ const QUEUES = [
   { id: "vindi", label: "A enviar Vindi", hint: "pagamento ainda não enviado" },
 ] as const;
 
-function syncLine(
-  sync: { last_run_at: string | null; last_status: string | null; last_report: { upserted?: number; cancellations?: number } | null } | null,
-  notice?: string,
-  pedidos?: string,
+function syncDetail(
+  sync: { last_run_at: string | null; last_report: { upserted?: number; cancellations?: number } | null } | null,
 ) {
-  const flash = notice && notice !== "aguardando" ? SYNC_MESSAGE[notice] : null;
-  const extra = notice === "ok" && pedidos && pedidos !== "0" ? ` ${pedidos} pedidos gravados.` : "";
   const when = sync?.last_run_at
     ? new Intl.DateTimeFormat("pt-BR", {
         dateStyle: "short",
@@ -29,10 +26,22 @@ function syncLine(
       }).format(new Date(sync.last_run_at))
     : null;
   const report = sync?.last_report;
-  const detail = when
-    ? `Última leitura ${when}${report?.upserted != null ? ` · ${report.upserted} pedidos` : ""}${report?.cancellations ? ` · ${report.cancellations} cancelamentos` : ""}.`
-    : "Ainda não houve leitura da loja.";
-  return [flash ? `${flash}${extra}` : null, detail].filter(Boolean).join(" ");
+  if (!when) return "Ainda não houve leitura da loja.";
+  return `Última leitura ${when}${report?.upserted != null ? ` · ${report.upserted} pedidos` : ""}${report?.cancellations ? ` · ${report.cancellations} cancelamentos` : ""}.`;
+}
+
+function trayNotice(sync?: string, pedidos?: string): { message: string; tone: "ok" | "danger" | "muted" } | null {
+  if (!sync || !SYNC_MESSAGE[sync]) return null;
+  if (sync === "ok") {
+    const count = Number(pedidos ?? 0);
+    const saved =
+      count > 0
+        ? `${count} ${count === 1 ? "pedido gravado" : "pedidos gravados"}.`
+        : "Nenhum pedido novo nesta rodada.";
+    return { message: `Loja atualizada. ${saved}`, tone: "ok" };
+  }
+  const tone = sync === "erro" || sync === "nao_configurado" || sync === "limite" ? "danger" : "muted";
+  return { message: SYNC_MESSAGE[sync], tone };
 }
 
 async function queueCount(id: (typeof QUEUES)[number]["id"]) {
@@ -128,6 +137,7 @@ export default async function HomePage({
   ]);
   const sync = syncRows[0] ?? null;
   const correios = correiosRows[0] ?? null;
+  const trayResult = trayNotice(params.sync, params.pedidos);
 
   return (
     <div className="grid gap-6">
@@ -142,11 +152,12 @@ export default async function HomePage({
             Pedidos da loja entram pelo TRAYadaptor enquanto o painel está aberto. Cada rodada grava até 15 pedidos.
             O frete cobrado na loja entra no custo de envio. Custo de compra, taxa de importação, estoque físico e compras de clientes continuam neste controle.
           </p>
-          <p className="mt-2 text-sm">{configured ? syncLine(sync, params.sync, params.pedidos) : "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN."}</p>
+          <p className="mt-2 text-sm">{configured ? syncDetail(sync) : "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN."}</p>
         </div>
         {configured ? (
-          <form action={syncTrayNow}>
-            <button type="submit">Atualizar agora</button>
+          <form action={syncTrayNow} className="grid justify-items-end gap-2">
+            <SyncButton idle="Atualizar agora" pendingLabel="Atualizando…" />
+            <SyncStatus pendingLabel="Lendo a loja…" message={trayResult?.message ?? null} tone={trayResult?.tone ?? "muted"} />
           </form>
         ) : null}
       </section>
