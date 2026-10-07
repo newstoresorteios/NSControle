@@ -1,23 +1,16 @@
-import { after } from "next/server";
+import { Suspense } from "react";
 import Link from "next/link";
 import { signOut } from "@/app/login/actions";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Logo } from "@/components/logo";
 import { Nav } from "@/components/nav";
+import { NavigationProgress } from "@/components/navigation-progress";
 import { requireTeam } from "@/lib/auth";
-import { scheduleBiSync } from "@/lib/bi-sync";
-import { scheduleCorreiosSync } from "@/lib/correios-sync";
-import { scheduleTraySync } from "@/lib/tray-sync";
 
 export const dynamic = "force-dynamic";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const { email } = await requireTeam();
-  after(async () => {
-    await scheduleBiSync();
-    await scheduleTraySync();
-    await scheduleCorreiosSync();
-  });
   return (
     <div className="min-h-screen bg-paper text-ink">
       <div className="sticky top-0 z-20">
@@ -46,6 +39,9 @@ export default async function PainelLayout({ children }: { children: React.React
             </div>
           </div>
         </header>
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
       </div>
       <AutoRefresh />
       <main className="mx-auto max-w-[1600px] px-5 py-8">{children}</main>

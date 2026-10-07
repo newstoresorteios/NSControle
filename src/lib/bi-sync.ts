@@ -152,9 +152,12 @@ export async function scheduleBiSync() {
       revalidatePath("/pedidos");
       revalidatePath("/financeiro");
       revalidatePath("/cancelamentos");
+      return true;
     }
+    return false;
   } catch (error) {
     console.error("bi sync", error instanceof Error ? error.message : "erro");
+    return false;
   }
 }
 

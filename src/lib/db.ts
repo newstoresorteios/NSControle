@@ -12,9 +12,9 @@ export function db() {
   if (!globalForDb.controleSql) {
     globalForDb.controleSql = postgres(connectionString(), {
       ssl: "require",
-      max: 1,
+      max: 4,
       prepare: false,
-      idle_timeout: 20,
+      idle_timeout: 120,
       types: {
         date: {
           to: 1082,

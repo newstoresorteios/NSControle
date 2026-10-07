@@ -133,14 +133,17 @@ export async function runCorreiosSync(options?: { force?: boolean }): Promise<Co
 }
 
 export async function scheduleCorreiosSync() {
-  if (!correiosConfigured()) return;
+  if (!correiosConfigured()) return false;
   try {
     const report = await runCorreiosSync({ force: false });
     if (report.updated > 0) {
       revalidatePath("/");
       revalidatePath("/pedidos");
+      return true;
     }
+    return false;
   } catch (error) {
     console.error("correios sync", error instanceof Error ? error.message : "erro");
+    return false;
   }
 }

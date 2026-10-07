@@ -383,16 +383,19 @@ export async function runTraySync(options?: { force?: boolean }): Promise<SyncRe
 }
 
 export async function scheduleTraySync() {
-  if (!trayConfigured()) return;
+  if (!trayConfigured()) return false;
   try {
     const report = await runTraySync({ force: false });
-    if (report.upserted > 0) {
+    if (report.upserted > 0 || report.cancellations > 0) {
       revalidatePath("/");
       revalidatePath("/pedidos");
       revalidatePath("/financeiro");
       revalidatePath("/cancelamentos");
+      return true;
     }
+    return false;
   } catch (error) {
     console.error("tray sync", error instanceof Error ? error.message : "erro");
+    return false;
   }
 }

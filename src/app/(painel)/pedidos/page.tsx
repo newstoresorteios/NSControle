@@ -55,54 +55,38 @@ export default async function PedidosPage({
   const textSearch = Boolean(numero || nome || idref || legacy);
   await requireTeam();
   const archive = aba === "entregues" && !textSearch;
-  const found = await db()<Array<RawOrder & { total_count: number }>>`
-    select ${db().unsafe(COLUMNS)}, count(*) over()::int as total_count
-    from ctl_orders
-    where (
-      ${numero} = ''
-      or order_key ilike ${numeroLike}
-      or translate(lower(coalesce(label, '')), ${ACCENTS}, ${PLAIN}) ilike ${numeroLike}
-      or (${digits} <> '' and order_key = ${digits})
-    )
-    and (
-      ${nome} = ''
-      or translate(lower(coalesce(product_name, '')), ${ACCENTS}, ${PLAIN}) ilike ${nomeLike}
-    )
-    and (
-      ${idref} = ''
-      or translate(lower(coalesce(supplier_ref, '')), ${ACCENTS}, ${PLAIN}) ilike ${idLike}
-    )
-    and (
-      ${comId} = ''
-      or (${comId} = 'com' and nullif(btrim(coalesce(supplier_ref, '')), '') is not null)
-      or (${comId} = 'sem' and nullif(btrim(coalesce(supplier_ref, '')), '') is null)
-    )
-    and (
-      ${legacy} = ''
-      or order_key ilike ${legacyLike}
-      or translate(lower(coalesce(label, '')), ${ACCENTS}, ${PLAIN}) ilike ${legacyLike}
-      or translate(lower(coalesce(product_name, '')), ${ACCENTS}, ${PLAIN}) ilike ${legacyLike}
-      or translate(lower(coalesce(supplier_ref, '')), ${ACCENTS}, ${PLAIN}) ilike ${legacyLike}
-      or tracking_code ilike ${legacyLike}
-      or translate(lower(coalesce(origin, '')), ${ACCENTS}, ${PLAIN}) ilike ${legacyLike}
-    )
-    and (${textSearch} or ${aba} <> 'pedidos' or (delivered = false and (origin is not null or tray_modified_at is not null)))
-    and (${textSearch} or ${aba} <> 'acompanhamento' or commercial_status in ('A ENVIAR VINDI', 'A ENVIAR', 'ENVIADO'))
-    and (${textSearch} or ${aba} <> 'rastreio' or (delivered = false and tracking_code is not null))
-    and (${textSearch} or ${aba} <> 'entregues' or delivered = true)
-    and (${params.fila ?? ""} <> 'devolucao' or tracking_situation ilike '%DEVOLU%')
-    and (${params.fila ?? ""} <> 'alfandega' or tracking_situation ilike '%ALF%')
-    and (${params.fila ?? ""} <> 'sem_retorno' or tracking_situation ilike '%Sem retorno%')
-    and (${params.fila ?? ""} <> 'vindi' or commercial_status = 'A ENVIAR VINDI')
-    order by
-      case when ${archive} then updated_at end desc nulls last,
-      case when not ${archive} and order_key ~ '^[0-9]+$' then 0 else 1 end,
-      case when not ${archive} and order_key ~ '^[0-9]+$' then order_key::numeric end desc nulls last,
-      coalesce(label, order_key)
-    limit ${PAGE_SIZE}
-    offset ${(page - 1) * PAGE_SIZE}
-  `;
-  const count = found[0]?.total_count ?? 0;
+  const sql = db();
+  const filters: SheetFilters = {
+    numero,
+    nome,
+    idref,
+    legacy,
+    numeroLike,
+    nomeLike,
+    idLike,
+    legacyLike,
+    digits,
+    comId,
+    textSearch,
+    aba,
+    fila: params.fila ?? "",
+  };
+  const [found, counted] = await Promise.all([
+    sql<RawOrder[]>`
+      select ${sql.unsafe(COLUMNS)}
+      from ctl_orders
+      ${sheetWhere(sql, filters)}
+      ${sheetOrder(sql, archive)}
+      limit ${PAGE_SIZE}
+      offset ${(page - 1) * PAGE_SIZE}
+    `,
+    sql<{ total_count: number }[]>`
+      select count(*)::int as total_count
+      from ctl_orders
+      ${sheetWhere(sql, filters)}
+    `,
+  ]);
+  const count = counted[0]?.total_count ?? 0;
   const rows = found.map((order) => toSheetOrder(order));
   const pages = Math.max(Math.ceil((count ?? 0) / PAGE_SIZE), 1);
   const hint = ABAS.find((item) => item.id === aba)?.hint;
@@ -227,6 +211,104 @@ function toSheetOrder(order: RawOrder): SheetOrder {
     tracking_event_local: saoPauloLocal(order.tracking_event_at),
     days_open: daysSince(order.purchase_date),
   };
+}
+
+type SheetFilters = {
+  numero: string;
+  nome: string;
+  idref: string;
+  legacy: string;
+  numeroLike: string;
+  nomeLike: string;
+  idLike: string;
+  legacyLike: string;
+  digits: string;
+  comId: "" | "com" | "sem";
+  textSearch: boolean;
+  aba: SheetMode;
+  fila: string;
+};
+
+type SqlTag = ReturnType<typeof db>;
+
+function sheetWhere(sql: SqlTag, filters: SheetFilters) {
+  return sql`
+    where true
+    ${numeroClause(sql, filters)}
+    ${nomeClause(sql, filters)}
+    ${idClause(sql, filters)}
+    ${legacyClause(sql, filters)}
+    ${idPresenceClause(sql, filters)}
+    ${abaClause(sql, filters)}
+    ${filaClause(sql, filters)}
+  `;
+}
+
+function numeroClause(sql: SqlTag, filters: SheetFilters) {
+  if (!filters.numero) return sql``;
+  const folded = sql`translate(lower(coalesce(label, '')), ${ACCENTS}, ${PLAIN}) ilike ${filters.numeroLike}`;
+  if (!filters.digits) {
+    return sql`and (order_key ilike ${filters.numeroLike} or ${folded})`;
+  }
+  return sql`and (order_key ilike ${filters.numeroLike} or ${folded} or order_key = ${filters.digits})`;
+}
+
+function nomeClause(sql: SqlTag, filters: SheetFilters) {
+  if (!filters.nome) return sql``;
+  return sql`and translate(lower(coalesce(product_name, '')), ${ACCENTS}, ${PLAIN}) ilike ${filters.nomeLike}`;
+}
+
+function idClause(sql: SqlTag, filters: SheetFilters) {
+  if (!filters.idref) return sql``;
+  return sql`and translate(lower(coalesce(supplier_ref, '')), ${ACCENTS}, ${PLAIN}) ilike ${filters.idLike}`;
+}
+
+function legacyClause(sql: SqlTag, filters: SheetFilters) {
+  if (!filters.legacy) return sql``;
+  return sql`and (
+    order_key ilike ${filters.legacyLike}
+    or translate(lower(coalesce(label, '')), ${ACCENTS}, ${PLAIN}) ilike ${filters.legacyLike}
+    or translate(lower(coalesce(product_name, '')), ${ACCENTS}, ${PLAIN}) ilike ${filters.legacyLike}
+    or translate(lower(coalesce(supplier_ref, '')), ${ACCENTS}, ${PLAIN}) ilike ${filters.legacyLike}
+    or tracking_code ilike ${filters.legacyLike}
+    or translate(lower(coalesce(origin, '')), ${ACCENTS}, ${PLAIN}) ilike ${filters.legacyLike}
+  )`;
+}
+
+function idPresenceClause(sql: SqlTag, filters: SheetFilters) {
+  if (filters.comId === "com") return sql`and nullif(btrim(coalesce(supplier_ref, '')), '') is not null`;
+  if (filters.comId === "sem") return sql`and nullif(btrim(coalesce(supplier_ref, '')), '') is null`;
+  return sql``;
+}
+
+function abaClause(sql: SqlTag, filters: SheetFilters) {
+  if (filters.textSearch) return sql``;
+  if (filters.aba === "pedidos") {
+    return sql`and delivered = false and (origin is not null or tray_modified_at is not null)`;
+  }
+  if (filters.aba === "acompanhamento") {
+    return sql`and commercial_status in ('A ENVIAR VINDI', 'A ENVIAR', 'ENVIADO')`;
+  }
+  if (filters.aba === "rastreio") return sql`and delivered = false and tracking_code is not null`;
+  return sql`and delivered = true`;
+}
+
+function filaClause(sql: SqlTag, filters: SheetFilters) {
+  if (filters.fila === "devolucao") return sql`and tracking_situation ilike '%DEVOLU%'`;
+  if (filters.fila === "alfandega") return sql`and tracking_situation ilike '%ALF%'`;
+  if (filters.fila === "sem_retorno") return sql`and tracking_situation ilike '%Sem retorno%'`;
+  if (filters.fila === "vindi") return sql`and commercial_status = 'A ENVIAR VINDI'`;
+  return sql``;
+}
+
+function sheetOrder(sql: SqlTag, archive: boolean) {
+  if (archive) return sql`order by updated_at desc nulls last, coalesce(label, order_key)`;
+  return sql`
+    order by
+      case when order_key ~ '^[0-9]+$' then 0 else 1 end,
+      case when order_key ~ '^[0-9]+$' then order_key::numeric end desc nulls last,
+      coalesce(label, order_key)
+  `;
 }
 
 function resolveAba(aba: string | undefined, fila: string | undefined): SheetMode {

@@ -290,3 +290,32 @@ summary.section-title {
 .nav-scroll::-webkit-scrollbar {
   display: none;
 }
+
+.nav-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  transform-origin: left center;
+  background: var(--ink);
+  pointer-events: none;
+  opacity: 0;
+  animation: nav-progress 8s ease-out forwards;
+  animation-delay: 0.12s;
+}
+
+@keyframes nav-progress {
+  0% {
+    opacity: 1;
+    transform: scaleX(0.08);
+  }
+  20% {
+    opacity: 1;
+    transform: scaleX(0.45);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleX(0.92);
+  }
+}
