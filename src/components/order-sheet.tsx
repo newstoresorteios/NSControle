@@ -146,6 +146,7 @@ function AcompanhamentoHead() {
       <th>Compra</th>
       <th>Pagamento</th>
       <th>Status</th>
+      <th>Rastreio</th>
       <th>Produto</th>
       <th>Obs internas</th>
       <th>Dias</th>
@@ -184,6 +185,9 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
             </option>
           ))}
         </select>
+      </td>
+      <td>
+        <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} />
       </td>
       <td className="wide">
         <TextCell name="product_name" value={row.product_name} onSave={save.run} />

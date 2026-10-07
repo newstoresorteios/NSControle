@@ -9,7 +9,7 @@ const PAGE_SIZE = 30;
 
 const ABAS: { id: SheetMode; label: string; hint: string }[] = [
   { id: "pedidos", label: "Pedidos", hint: "Compras em aberto: origem, comprado, CPF, taxa e entregue." },
-  { id: "acompanhamento", label: "Acompanhamento", hint: "A enviar Vindi, a enviar e enviado." },
+  { id: "acompanhamento", label: "Acompanhamento", hint: "A enviar Vindi, a enviar e enviado, com o código de rastreio." },
   { id: "rastreio", label: "Rastreio", hint: "Códigos que ainda não foram marcados como entregues." },
   { id: "entregues", label: "Entregues", hint: "Arquivo. Desmarcar Entregue devolve o pedido para a lista aberta." },
 ];
