@@ -5,6 +5,10 @@ import { db } from "@/lib/db";
 import { monthSummary } from "@/lib/finance";
 import { FLOW_LABEL, asNumber, brl, monthLabel, percent } from "@/lib/format";
 
+function pedidos(count: number) {
+  return `${count} ${count === 1 ? "pedido" : "pedidos"}`;
+}
+
 export default async function FinanceiroPage({
   searchParams,
 }: {
@@ -47,6 +51,7 @@ export default async function FinanceiroPage({
       reference: string | null;
       product_name: string | null;
       sourcing_status: string | null;
+      purchased: boolean;
       sale_amount: string | null;
       purchase_amount: string | null;
       payment_fee: string | null;
@@ -55,29 +60,27 @@ export default async function FinanceiroPage({
       gain_amount: string | null;
     }[]
   >`
-    select id, label, order_key, flow, reference, product_name, sourcing_status,
+    select id, label, order_key, flow, reference, product_name, sourcing_status, purchased,
       sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, gain_amount
     from ctl_orders
     where finance_month = ${monthDate}
     order by flow, order_key desc
   `;
   const summary = monthSummary(orders ?? [], asNumber(goal?.target_amount), selected);
-  const cards = [
-    ["Sob encomenda", summary.vendasEncomenda],
-    ["Loja nova", summary.vendasLoja],
-    ["NS Créditos", summary.vendasCreditos],
-    ["Custo de compra", summary.custoCompra],
-    ["Taxas e envios", summary.taxas],
-    ["Resultado", summary.resultado],
-  ] as const;
+  const gaps = [
+    summary.semCompra ? `custo de compra em ${pedidos(summary.semCompra)}` : null,
+    summary.semTaxa ? `taxa da máquina em ${pedidos(summary.semTaxa)}` : null,
+    summary.semEnvio ? `envio em ${pedidos(summary.semEnvio)}` : null,
+  ].filter((item): item is string => Boolean(item));
 
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="page-title">{monthLabel(selected)}</h1>
-          <p className="text-muted">
-            Margem {percent(summary.margem)} · markup {summary.markup == null ? "—" : summary.markup.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
+          <h1 className="page-title">Controle financeiro de {monthLabel(selected)}</h1>
+          <p className="max-w-3xl text-sm text-muted">
+            Vendas e mês vêm do BI. Frete, produto e rastreio vêm do TRAYadaptor. Custo de compra, taxa da máquina,
+            taxa de importação e o status Comprado ficam na ficha do pedido.
           </p>
         </div>
         <form className="flex flex-wrap items-center gap-2" action="/financeiro">
@@ -92,25 +95,70 @@ export default async function FinanceiroPage({
         </form>
       </div>
       {params.erro ? <p className="text-sm text-danger">Não foi possível salvar a meta.</p> : null}
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map(([label, value]) => (
-          <article key={label} className="card stat">
-            <p className="kicker">{label}</p>
-            <p className="num mt-2 text-2xl font-medium tracking-tight">{brl(value)}</p>
-          </article>
-        ))}
-      </section>
-      <section className="card grid gap-4 md:grid-cols-[1fr_16rem]">
-        <div className="grid gap-1 text-sm">
-          <p>Meta: {brl(goal?.target_amount)}</p>
-          <p>Falta para a meta: {brl(summary.falta)}</p>
-          <p>Percentual concluído: {percent(summary.percentual)}</p>
-          <p>
-            Média diária realizada ({summary.elapsed} dias): {brl(summary.mediaRealizada)}
+
+      <section className="card overflow-x-auto">
+        <h2 className="section-title">Resultado financeiro</h2>
+        <table className="mt-3">
+          <thead>
+            <tr>
+              <th>Total de vendas loja nova</th>
+              <th>Total de vendas sob encomenda</th>
+              <th>Custo de compra</th>
+              <th>Custo de taxas e envios</th>
+              <th>Custo total estimado</th>
+              <th>Resultado final</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="num">{brl(summary.vendasLoja)}</td>
+              <td className="num">{brl(summary.vendasEncomenda)}</td>
+              <td className="num text-danger">{brl(summary.custoCompra)}</td>
+              <td className="num text-danger">{brl(summary.taxas)}</td>
+              <td className="num text-danger">{brl(summary.custoTotal)}</td>
+              <td className="num text-ok">{brl(summary.resultado)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="mt-3 text-sm text-muted">
+          Taxas e envios reúnem taxa da máquina, frete e taxa de importação. Pedido vindo da loja entra em Loja nova.
+          Sob encomenda é o fluxo marcado na ficha.
+          {summary.vendasCreditos ? ` NS Créditos ${brl(summary.vendasCreditos)} entram no resultado e ficam fora da meta.` : ""}
+        </p>
+        {gaps.length ? (
+          <p className="mt-2 text-sm text-danger">
+            Falta lançar {gaps.join(", ")}. O resultado trata esse vazio como zero.
           </p>
-          <p>Média diária a realizar: {brl(summary.mediaARealizar)}</p>
+        ) : null}
+      </section>
+
+      <section className="card grid gap-4 overflow-x-auto lg:grid-cols-[1fr_16rem]">
+        <div>
+          <h2 className="section-title">Meta</h2>
+          <table className="mt-3">
+            <thead>
+              <tr>
+                <th>Total de vendas lojas (nova + encomenda)</th>
+                <th>Meta</th>
+                <th>Falta para a meta</th>
+                <th>Percentual concluído</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="num">{brl(summary.vendasLojas)}</td>
+                <td className="num">{brl(goal?.target_amount)}</td>
+                <td className="num">{brl(summary.falta)}</td>
+                <td className="num">{percent(summary.percentual)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="mt-3 text-sm text-muted">
+            Média diária realizada ({summary.elapsed} dias): {brl(summary.mediaRealizada)}. Média diária da meta:{" "}
+            {brl(summary.mediaARealizar)}.
+          </p>
         </div>
-        <form action={saveGoal} className="grid gap-2">
+        <form action={saveGoal} className="grid content-start gap-2">
           <input type="hidden" name="month" value={selected} />
           <label className="grid gap-1 text-sm">
             Meta do mês
@@ -119,17 +167,60 @@ export default async function FinanceiroPage({
           <button type="submit">Atualizar meta</button>
         </form>
       </section>
+
+      <section className="card overflow-x-auto">
+        <h2 className="section-title">Indicadores</h2>
+        <table className="mt-3">
+          <thead>
+            <tr>
+              <th>Retorno sobre custo total</th>
+              <th>Margem de lucro</th>
+              <th>Markup sobre o custo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="num">{percent(summary.retorno)}</td>
+              <td className="num">{percent(summary.margem)}</td>
+              <td className="num">{percent(summary.markup)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <table className="mt-4">
+          <thead>
+            <tr>
+              <th>Média de preço venda</th>
+              <th>Média de preço custo</th>
+              <th>Média taxa pgto</th>
+              <th>Média envio</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="num">{brl(summary.mediaVenda)}</td>
+              <td className="num">{brl(summary.mediaCusto)}</td>
+              <td className="num">{brl(summary.mediaTaxa)}</td>
+              <td className="num">{brl(summary.mediaEnvio)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="mt-3 text-sm text-muted">Cada média usa só as linhas em que o valor foi lançado.</p>
+      </section>
+
       <div className="card overflow-x-auto">
-        <table>
+        <h2 className="section-title">Linhas do mês</h2>
+        <table className="mt-3">
           <thead>
             <tr>
               <th>Pedido</th>
               <th>Fluxo</th>
               <th>Referência</th>
-              <th>Compra</th>
-              <th>Venda</th>
-              <th>Custo</th>
-              <th>Taxa</th>
+              <th>Status</th>
+              <th>Valor de venda</th>
+              <th>Valor de compra</th>
+              <th>Taxas de pgto</th>
+              <th>Custo envio</th>
+              <th>Importação</th>
               <th>Ganho</th>
             </tr>
           </thead>
@@ -143,9 +234,11 @@ export default async function FinanceiroPage({
                 </td>
                 <td>{FLOW_LABEL[order.flow] || order.flow}</td>
                 <td>{order.reference || order.product_name || "—"}</td>
-                <td>{order.sourcing_status || "—"}</td>
+                <td>{order.sourcing_status || (order.purchased ? "Comprado" : "—")}</td>
                 <td className="num">{brl(order.sale_amount)}</td>
                 <td className="num">{brl(order.purchase_amount)}</td>
+                <td className="num">{brl(order.payment_fee)}</td>
+                <td className="num">{brl(order.shipping_cost)}</td>
                 <td className="num">{brl(order.import_tax)}</td>
                 <td className="num">{brl(order.gain_amount)}</td>
               </tr>

@@ -16,12 +16,12 @@ export function brl(value: unknown): string {
   return number.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export function percent(value: number | null): string {
+export function percent(value: number | null, digits = 2): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return value.toLocaleString("pt-BR", {
     style: "percent",
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   });
 }
 
