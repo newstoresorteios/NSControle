@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/", label: "Início" },
   { href: "/pedidos", label: "Pedidos" },
   { href: "/financeiro", label: "Financeiro" },
+  { href: "/pagamentos", label: "Pagamentos" },
   { href: "/estoque", label: "Estoque" },
   { href: "/compras", label: "Compras" },
   { href: "/cancelamentos", label: "Cancelamentos" },

@@ -221,3 +221,69 @@ drop trigger if exists ctl_orders_reuse_sheet_row on public.ctl_orders;
 create trigger ctl_orders_reuse_sheet_row
 before insert on public.ctl_orders
 for each row execute function public.ctl_orders_reuse_sheet_row();
+
+-- Supplier invoices uploaded in Pagamentos. Amounts stay in the invoice
+-- currency and do not overwrite ctl_orders.purchase_amount.
+
+create table if not exists public.ctl_supplier_invoices (
+  id uuid primary key default gen_random_uuid(),
+  supplier_name text,
+  bill_to text,
+  invoice_number text,
+  invoice_date date,
+  currency text not null default 'EUR',
+  total_amount numeric(14,2),
+  payment_method text,
+  bank_name text,
+  iban text,
+  swift text,
+  beneficiary text,
+  due_date date,
+  due_amount numeric(14,2),
+  template text not null,
+  status text not null default 'rascunho' check (status in ('rascunho', 'confirmado')),
+  draft_document boolean not null default false,
+  source_filename text,
+  raw_text text,
+  warning text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ctl_supplier_invoice_lines (
+  id uuid primary key default gen_random_uuid(),
+  invoice_id uuid not null references public.ctl_supplier_invoices (id) on delete cascade,
+  line_no integer not null,
+  kind text not null check (kind in ('produto', 'taxa')),
+  description text,
+  reference text,
+  order_key text,
+  quantity numeric(14,2),
+  unit_amount numeric(14,2),
+  line_amount numeric(14,2),
+  created_at timestamptz not null default now(),
+  unique (invoice_id, line_no)
+);
+
+create table if not exists public.ctl_supplier_invoice_links (
+  id uuid primary key default gen_random_uuid(),
+  line_id uuid not null references public.ctl_supplier_invoice_lines (id) on delete cascade,
+  order_id uuid references public.ctl_orders (id) on delete set null,
+  reason text,
+  created_at timestamptz not null default now(),
+  unique (line_id, order_id)
+);
+
+create index if not exists ctl_supplier_invoices_number_idx
+  on public.ctl_supplier_invoices (invoice_number);
+
+create index if not exists ctl_supplier_invoice_lines_invoice_idx
+  on public.ctl_supplier_invoice_lines (invoice_id);
+
+create index if not exists ctl_supplier_invoice_links_order_idx
+  on public.ctl_supplier_invoice_links (order_id);
+
+drop trigger if exists ctl_supplier_invoices_touch on public.ctl_supplier_invoices;
+create trigger ctl_supplier_invoices_touch
+before update on public.ctl_supplier_invoices
+for each row execute function public.ctl_touch_updated_at();

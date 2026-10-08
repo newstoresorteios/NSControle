@@ -1,0 +1,33 @@
+Factura CA26-Borrador
+Fecha de emisión 06/10/2026
+L F NEWBOLD NEVES MANTA
+26.557.831/0001-52
+Rua Quinze de Novembro, 90 - Centro, Niterói -
+RJ, 24020-125, Brasil
+newrecreio@gmail.com
++5521998003025
+Ana Luiza Moraes Fortuna Santos
+Y4433262A
+Av. Cuarta, Edificio Diana, portal 2, pl.2,
+pta. B, Pol. Industrial Pocomaco, A
+Coruña, 15190, ES
+ana@redirecteuropa.com
++34634256366
+Concepto Cant. Precio Total
+Comisión de servicio 1 47,13 € 47,13 €
+Servicio de compra asistida 3% del total
+Gastos suplidos Cant. Precio Total
+Pedido 26184 NK5010-51L 1 255,43 € 255,43 €
+Pedido 26214 Brazaletes CW 20-WEB-02-SXC-DC-ST 1 185,00 € 185,00 €
+Pedido 26228 T852.041.534 1 49,95 € 49,95 €
+Pedido 26228 T852.046.829 1 45,00 € 45,00 €
+Pedido 25942 FC-303NN5B6B 1 1.036,00 € 1.036,00 €
+Base imponible 47,13 €
+Gastos suplidos 1.571,38 €
+Total 1.618,51 €
+Total 1.618,51 €
+Régimen Impuesto: Operación no sujeta al IVA por reglas de localización – fuera del Territorio de Aplicación del Impuesto
+(TAI).
+Método de pago transferencia SEPA
+cosas
+CA26 - draft 1/1

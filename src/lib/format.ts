@@ -11,9 +11,14 @@ export function asNumber(value: unknown): number | null {
 }
 
 export function brl(value: unknown): string {
+  return money(value, "BRL");
+}
+
+export function money(value: unknown, currency = "BRL"): string {
   const number = asNumber(value);
   if (number == null) return "—";
-  return number.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const code = typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? currency : "BRL";
+  return number.toLocaleString("pt-BR", { style: "currency", currency: code });
 }
 
 export function percent(value: number | null, digits = 2): string {

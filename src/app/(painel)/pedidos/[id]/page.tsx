@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { updateOrder } from "@/app/(painel)/pedidos/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { brl } from "@/lib/format";
+import { asNumber, brl, money } from "@/lib/format";
 
 export default async function PedidoPage({
   params,
@@ -15,7 +15,19 @@ export default async function PedidoPage({
   const { id } = await params;
   const query = await searchParams;
   await requireTeam();
-  const found = await db()`select * from ctl_orders where id = ${id} limit 1`;
+  const sql = db();
+  const [found, payments] = await Promise.all([
+    sql`select * from ctl_orders where id = ${id} limit 1`,
+    sql<OrderPayment[]>`
+      select k.id as link_id, i.id as invoice_id, i.supplier_name, i.invoice_number, i.currency, i.status,
+        l.reference, l.description, l.quantity, l.line_amount
+      from ctl_supplier_invoice_links k
+      join ctl_supplier_invoice_lines l on l.id = k.line_id
+      join ctl_supplier_invoices i on i.id = l.invoice_id
+      where k.order_id = ${id}
+      order by i.invoice_date desc nulls last, l.line_no
+    `,
+  ]);
   const order = found[0];
   if (!order) notFound();
   const monthValue = order.finance_month ? String(order.finance_month).slice(0, 7) : "";
@@ -35,6 +47,27 @@ export default async function PedidoPage({
         <section className="card text-sm">
           <h2 className="section-title">Loja</h2>
           <p className="mt-2 whitespace-pre-wrap text-muted">{order.notes_tray}</p>
+        </section>
+      ) : null}
+      {payments.length ? (
+        <section className="card text-sm">
+          <h2 className="section-title">Pagamentos</h2>
+          <ul className="mt-3 grid gap-2">
+            {payments.map((item) => (
+              <li key={item.link_id}>
+                <Link className="underline" href={`/pagamentos/${item.invoice_id}`}>
+                  {item.invoice_number || "Fatura"}
+                </Link>
+                {item.supplier_name ? ` · ${item.supplier_name}` : ""}
+                {" · "}
+                {item.reference || item.description || "—"}
+                {item.quantity != null ? ` · ${pieces(item.quantity)} un` : ""}
+                {" · "}
+                <span className="num">{money(item.line_amount, item.currency)}</span>
+                {item.status === "rascunho" ? " · aguardando confirmação" : ""}
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
       <form action={updateOrder} className="card grid gap-3 md:grid-cols-3">
@@ -133,6 +166,25 @@ function Check({
     </label>
   );
 }
+
+function pieces(value: number | string | null) {
+  const number = asNumber(value);
+  if (number == null) return "—";
+  return Number.isInteger(number) ? String(number) : number.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+
+type OrderPayment = {
+  link_id: string;
+  invoice_id: string;
+  supplier_name: string | null;
+  invoice_number: string | null;
+  currency: string;
+  status: string;
+  reference: string | null;
+  description: string | null;
+  quantity: number | string | null;
+  line_amount: number | string | null;
+};
 
 function dateInput(value: string | null) {
   return value ? String(value).slice(0, 10) : "";
