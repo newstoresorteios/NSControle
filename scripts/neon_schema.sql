@@ -222,8 +222,8 @@ create trigger ctl_orders_reuse_sheet_row
 before insert on public.ctl_orders
 for each row execute function public.ctl_orders_reuse_sheet_row();
 
--- Supplier invoices uploaded in Pagamentos. Amounts stay in the invoice
--- currency and do not overwrite ctl_orders.purchase_amount.
+-- Supplier invoices uploaded in Pagamentos. Confirming a link writes the
+-- PTAX conversion into purchase_amount and keeps the foreign amount beside it.
 
 create table if not exists public.ctl_supplier_invoices (
   id uuid primary key default gen_random_uuid(),
@@ -287,3 +287,14 @@ drop trigger if exists ctl_supplier_invoices_touch on public.ctl_supplier_invoic
 create trigger ctl_supplier_invoices_touch
 before update on public.ctl_supplier_invoices
 for each row execute function public.ctl_touch_updated_at();
+
+alter table public.ctl_supplier_invoices
+  add column if not exists fx_rate numeric(18,6),
+  add column if not exists fx_date date,
+  add column if not exists fx_source text;
+
+alter table public.ctl_orders
+  add column if not exists purchase_currency text,
+  add column if not exists purchase_foreign_amount numeric(14,2),
+  add column if not exists purchase_fx_rate numeric(18,6),
+  add column if not exists purchase_fx_date date;

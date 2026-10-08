@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import { deleteInvoice, saveInvoice } from "@/app/(painel)/pagamentos/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { FLOW_LABEL, asNumber, money } from "@/lib/format";
+import { FLOW_LABEL, asNumber, money, shortDate } from "@/lib/format";
+import { allocateInvoice, paymentSummary } from "@/lib/invoice-cost";
 import { suggestInvoice, type OrderHit } from "@/lib/invoice-match";
 import { candidateOrders } from "@/lib/invoice-orders";
 import { TEMPLATE_LABEL, type InvoiceTemplate } from "@/lib/invoice-parse";
+import { rememberInvoiceRate } from "@/lib/invoice-rate";
 
 export default async function PagamentoPage({
   params,
@@ -24,7 +26,7 @@ export default async function PagamentoPage({
     sql<Invoice[]>`
       select id, supplier_name, bill_to, invoice_number, invoice_date, currency, total_amount,
         payment_method, bank_name, iban, swift, beneficiary, due_date, due_amount,
-        template, status, draft_document, source_filename, raw_text, warning
+        template, status, draft_document, source_filename, raw_text, warning, fx_rate, fx_date
       from ctl_supplier_invoices
       where id = ${id}
       limit 1
@@ -69,6 +71,16 @@ export default async function PagamentoPage({
     });
   }
   const suggestions = suggestInvoice(readable, [...known.values()]);
+  const quote = await rememberInvoiceRate(invoice.id, invoice.currency, invoice.invoice_date, invoice.fx_rate, invoice.fx_date);
+  const moneyLines = lines.map((line) => ({
+    id: line.id,
+    kind: line.kind,
+    quantity: asNumber(line.quantity),
+    lineAmount: asNumber(line.line_amount),
+    orderIds: links.filter((link) => link.line_id === line.id && link.order_id).map((link) => link.order_id as string),
+  }));
+  const summary = paymentSummary(moneyLines, asNumber(invoice.total_amount), quote?.rate ?? null);
+  const allocation = allocateInvoice(moneyLines);
   const message = notice(query);
 
   return (
@@ -87,6 +99,32 @@ export default async function PagamentoPage({
         </p>
       </div>
       {message ? <p className={`text-sm ${message.tone === "ok" ? "text-ok" : "text-danger"}`}>{message.text}</p> : null}
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <article className="card stat">
+          <p className="kicker">Total do pagamento</p>
+          <p className="num mt-2 text-2xl font-medium tracking-tight">{money(summary.foreign, invoice.currency)}</p>
+          <p className="mt-1 text-sm text-muted">{summary.brl == null ? "Sem cotação" : money(summary.brl, "BRL")}</p>
+        </article>
+        <article className="card stat">
+          <p className="kicker">Itens</p>
+          <p className="num mt-2 text-2xl font-medium tracking-tight">{summary.items}</p>
+          <p className="mt-1 text-sm text-muted">Sem contar a taxa.</p>
+        </article>
+        <article className="card stat">
+          <p className="kicker">Custo médio</p>
+          <p className="num mt-2 text-2xl font-medium tracking-tight">{summary.average == null ? "—" : money(summary.average, "BRL")}</p>
+          <p className="mt-1 text-sm text-muted">Total em reais por item.</p>
+        </article>
+        <article className="card stat">
+          <p className="kicker">Cotação</p>
+          <p className="num mt-2 text-2xl font-medium tracking-tight">
+            {quote ? quote.rate.toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : "—"}
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            {quote ? `PTAX venda em ${shortDate(quote.quoteDate)}` : "Ainda não há PTAX para esta data."}
+          </p>
+        </article>
+      </section>
       {invoice.warning ? <p className="card text-sm">{invoice.warning}</p> : null}
       <form action={saveInvoice} className="grid gap-5">
         <input type="hidden" name="id" value={invoice.id} />
@@ -118,6 +156,7 @@ export default async function PagamentoPage({
                   <th>Qtd</th>
                   <th>Unitário</th>
                   <th>Total</th>
+                  <th>Em reais</th>
                   <th>Pedido na fatura</th>
                   <th>Vínculo</th>
                 </tr>
@@ -151,6 +190,11 @@ export default async function PagamentoPage({
                       <td className="num">{pieces(line.quantity)}</td>
                       <td className="num">{money(line.unit_amount, invoice.currency)}</td>
                       <td className="num">{money(line.line_amount, invoice.currency)}</td>
+                      <td className="num">
+                        {quote && allocation.lineForeign.has(line.id)
+                          ? money(Math.round((allocation.lineForeign.get(line.id) ?? 0) * quote.rate * 100) / 100, "BRL")
+                          : "—"}
+                      </td>
                       <td className="min-w-32">
                         {line.kind === "taxa" ? (
                           "—"
@@ -208,10 +252,8 @@ export default async function PagamentoPage({
           )}
         </section>
         <p className="text-sm text-muted">
-          Confirmar grava o vínculo com o pedido. O valor em euro fica nesta fatura e não altera o custo em reais.
-          {lines.some((line) => line.kind === "produto")
-            ? " Se corrigir a referência, use Buscar pedidos de novo."
-            : ""}
+          Confirmar grava o custo em reais no pedido, pela PTAX do dia, e guarda o valor em euro ou dólar. A taxa é
+          rateada entre os itens. Se corrigir a referência, use Buscar pedidos de novo.
         </p>
         <div className="flex flex-wrap gap-3">
           <button type="submit" name="intent" value="confirmar">
@@ -258,12 +300,18 @@ function optionsFor(candidates: OrderHit[], saved: LinkRow[], known: Map<string,
 function notice(query: { ok?: string; erro?: string; aviso?: string; qual?: string }) {
   const qual = (query.qual ?? "").slice(0, 80);
   if (query.erro === "salvar") return { tone: "danger" as const, text: "Não foi possível salvar." };
+  if (query.erro === "cotacao") {
+    return { tone: "danger" as const, text: "Não encontrei a PTAX dessa data. O vínculo foi salvo e o custo em reais não mudou." };
+  }
   if (query.erro === "pedido") return { tone: "danger" as const, text: `Não encontrei o pedido ${qual}.` };
   if (query.aviso === "ja-existe") {
     return { tone: "ok" as const, text: "Esta fatura já estava no painel. Nada foi duplicado." };
   }
   if (query.aviso === "fichas") {
     return { tone: "ok" as const, text: `O pedido ${qual} tem mais de uma ficha. Vinculei a mais recente.` };
+  }
+  if (query.ok === "custo") {
+    return { tone: "ok" as const, text: "Custo em reais gravado nos pedidos. O valor em euro ou dólar ficou na ficha." };
   }
   if (query.ok) return { tone: "ok" as const, text: "Vínculos salvos." };
   return null;
@@ -335,6 +383,8 @@ type Invoice = {
   source_filename: string | null;
   raw_text: string | null;
   warning: string | null;
+  fx_rate: number | string | null;
+  fx_date: string | null;
 };
 
 type Line = {

@@ -5,11 +5,13 @@ import { redirect } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { decimal, text } from "@/lib/form";
+import { allocateInvoice } from "@/lib/invoice-cost";
 import { interpretInvoice } from "@/lib/invoice-ai";
 import { suggestInvoice } from "@/lib/invoice-match";
 import { candidateOrders } from "@/lib/invoice-orders";
 import { parseInvoice, type ParsedInvoice } from "@/lib/invoice-parse";
 import { pdfToText } from "@/lib/invoice-pdf";
+import { ptaxRate } from "@/lib/fx";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -102,7 +104,7 @@ export async function saveInvoice(formData: FormData) {
   if (!existing[0]) redirect("/pagamentos");
 
   const known = await sql<StoredLine[]>`
-    select id, kind, quantity
+    select id, kind, quantity, line_amount
     from ctl_supplier_invoice_lines
     where invoice_id = ${id}
   `;
@@ -140,6 +142,7 @@ export async function saveInvoice(formData: FormData) {
       reference: text(formData, `ref_${lineId}`),
       orderKey: digits(text(formData, `key_${lineId}`)),
       quantity: current.quantity == null ? null : Number(current.quantity),
+      lineAmount: current.line_amount == null ? null : Number(current.line_amount),
       orderIds: current.kind === "taxa" ? [] : [...orderIds],
     });
   }
@@ -160,9 +163,16 @@ export async function saveInvoice(formData: FormData) {
     for (const line of drafts) line.orderIds = line.orderIds.filter((orderId) => ids.has(orderId));
   }
 
+  const currency = currencyOf(text(formData, "currency"));
+  const invoiceDate = dateOrNull(text(formData, "invoice_date"));
+  let quote: { rate: number; quoteDate: string } | null = null;
+  if (intent === "confirmar" && !missing.length) {
+    quote = currency === "BRL" || !invoiceDate ? (currency === "BRL" ? { rate: 1, quoteDate: invoiceDate ?? "" } : null) : await ptaxRate(currency, invoiceDate);
+  }
+
   let status = existing[0].status;
   if (intent === "rascunho") status = "rascunho";
-  if (intent === "confirmar" && !missing.length) status = "confirmado";
+  if (intent === "confirmar" && !missing.length && quote) status = "confirmado";
 
   const previous = await sql<{ order_id: string }[]>`
     select k.order_id
@@ -188,6 +198,9 @@ export async function saveInvoice(formData: FormData) {
           beneficiary = ${text(formData, "beneficiary")},
           due_date = ${dateOrNull(text(formData, "due_date"))},
           due_amount = ${decimal(formData, "due_amount")},
+          fx_rate = coalesce(${quote?.rate ?? null}, fx_rate),
+          fx_date = coalesce(${quote?.quoteDate || null}, fx_date),
+          fx_source = coalesce(${quote ? "PTAX venda" : null}, fx_source),
           status = ${status}
         where id = ${id}
       `;
@@ -209,6 +222,20 @@ export async function saveInvoice(formData: FormData) {
           `;
         }
       }
+      if (quote && intent === "confirmar" && !missing.length) {
+        for (const cost of allocateInvoice(drafts).orders) {
+          const brl = Math.round(cost.foreignAmount * quote.rate * 100) / 100;
+          await tx`
+            update ctl_orders set
+              purchase_amount = ${brl},
+              purchase_currency = ${currency},
+              purchase_foreign_amount = ${cost.foreignAmount},
+              purchase_fx_rate = ${quote.rate},
+              purchase_fx_date = ${quote.quoteDate || null}
+            where id = ${cost.orderId}
+          `;
+        }
+      }
     });
   } catch {
     redirect(`/pagamentos/${id}?erro=salvar`);
@@ -216,6 +243,8 @@ export async function saveInvoice(formData: FormData) {
 
   revalidatePath("/pagamentos");
   revalidatePath(`/pagamentos/${id}`);
+  revalidatePath("/financeiro");
+  revalidatePath("/");
   const touched = new Set<string>([
     ...previous.map((row) => row.order_id),
     ...drafts.flatMap((line) => line.orderIds),
@@ -225,10 +254,13 @@ export async function saveInvoice(formData: FormData) {
   if (missing.length) {
     redirect(`/pagamentos/${id}?erro=pedido&qual=${encodeURIComponent(missing.join(", "))}`);
   }
+  if (intent === "confirmar" && !quote) {
+    redirect(`/pagamentos/${id}?erro=cotacao`);
+  }
   if (ambiguous.length) {
     redirect(`/pagamentos/${id}?aviso=fichas&qual=${encodeURIComponent(ambiguous.join(", "))}`);
   }
-  redirect(`/pagamentos/${id}?ok=1`);
+  redirect(`/pagamentos/${id}?ok=${quote && intent === "confirmar" ? "custo" : "1"}`);
 }
 
 export async function deleteInvoice(formData: FormData) {
@@ -284,6 +316,7 @@ type StoredLine = {
   id: string;
   kind: string;
   quantity: number | string | null;
+  line_amount: number | string | null;
 };
 
 type DraftLine = {
@@ -292,5 +325,6 @@ type DraftLine = {
   reference: string | null;
   orderKey: string | null;
   quantity: number | null;
+  lineAmount: number | null;
   orderIds: string[];
 };

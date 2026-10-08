@@ -32,11 +32,11 @@ export type ParsedInvoice = {
 };
 
 export const TEMPLATE_LABEL: Record<InvoiceTemplate, string> = {
-  edjouse: "Edjouse",
-  pesci: "Pesci",
-  ca: "CA",
-  ia: "IA",
-  desconhecido: "Desconhecido",
+  edjouse: "Fatura Edjouse",
+  pesci: "Fatura Pesci",
+  ca: "Fatura CA",
+  ia: "Leitura por IA",
+  desconhecido: "Layout novo",
 };
 
 const AMOUNT = String.raw`(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d+\.\d{2})`;

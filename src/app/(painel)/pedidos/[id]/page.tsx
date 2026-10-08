@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { updateOrder } from "@/app/(painel)/pedidos/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { asNumber, brl, money } from "@/lib/format";
+import { asNumber, brl, money, shortDate } from "@/lib/format";
 
 export default async function PedidoPage({
   params,
@@ -103,7 +103,15 @@ export default async function PedidoPage({
         <Field label="Pagamento" name="payment_date" type="date" defaultValue={dateInput(order.payment_date)} />
         <Field label="Dias do fornecedor" name="supplier_days" defaultValue={order.supplier_days} />
         <Field label="Valor de venda" name="sale_amount" defaultValue={order.sale_amount} />
-        <Field label="Valor de compra" name="purchase_amount" defaultValue={order.purchase_amount} />
+        <Field label="Valor de compra (R$)" name="purchase_amount" defaultValue={order.purchase_amount} />
+        {order.purchase_foreign_amount != null ? (
+          <p className="text-sm text-muted md:col-span-3">
+            Na moeda: {money(order.purchase_foreign_amount, order.purchase_currency || "EUR")}
+            {order.purchase_fx_rate != null
+              ? ` · PTAX ${Number(order.purchase_fx_rate).toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 4 })} em ${shortDate(order.purchase_fx_date)}`
+              : ""}
+          </p>
+        ) : null}
         <Field label="Taxa de pagamento" name="payment_fee" defaultValue={order.payment_fee} />
         <Field label="Custo de envio" name="shipping_cost" defaultValue={order.shipping_cost} />
         <Field label="Taxa de importação" name="import_tax" defaultValue={order.import_tax} />
