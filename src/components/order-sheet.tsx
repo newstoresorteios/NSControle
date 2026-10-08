@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { patchOrder } from "@/app/(painel)/pedidos/actions";
+import { shortDate } from "@/lib/format";
 
 export type SheetMode = "pedidos" | "acompanhamento" | "rastreio" | "entregues";
 
@@ -281,9 +282,14 @@ function OrderCell({ row, status }: { row: SheetOrder; status: SaveStatus }) {
   const extra = label && label !== number && label !== `Pedido ${number}` ? label : null;
   return (
     <td className="min-w-36 whitespace-nowrap">
-      <Link href={`/pedidos/${row.id}`} className="num underline">
-        {number}
-      </Link>
+      <div className="flex items-baseline gap-2">
+        <Link href={`/pedidos/${row.id}`} className="num underline">
+          {number}
+        </Link>
+        <span className="num text-xs text-muted" title="Data do pedido">
+          {shortDate(row.purchase_date)}
+        </span>
+      </div>
       <div className="text-xs text-muted">{extra || (status === "idle" ? "\u00a0" : STATUS_LABEL[status])}</div>
       {extra && status !== "idle" ? <div className="text-xs text-muted">{STATUS_LABEL[status]}</div> : null}
     </td>

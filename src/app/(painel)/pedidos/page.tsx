@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { addSheetRow } from "@/app/(painel)/pedidos/actions";
 import { OrderSheet, type SheetMode, type SheetOrder } from "@/components/order-sheet";
+import { PageSizeSelect } from "@/components/page-size-select";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ACCENTS, PLAIN, idPresence, likePattern, orderDigits } from "@/lib/order-filters";
 
-const PAGE_SIZE = 30;
+const PAGE_SIZES = [30, 50, 100, 200];
+const DEFAULT_PAGE_SIZE = 100;
+
+function pageSizeOf(value: string | undefined) {
+  const size = Number(value);
+  return PAGE_SIZES.includes(size) ? size : DEFAULT_PAGE_SIZE;
+}
 
 const ABAS: { id: SheetMode; label: string; hint: string }[] = [
   { id: "pedidos", label: "Pedidos", hint: "Compras em aberto: origem, comprado, CPF, taxa e entregue." },
@@ -36,11 +43,13 @@ export default async function PedidosPage({
     fila?: string;
     aba?: string;
     page?: string;
+    tamanho?: string;
     erro?: string;
   }>;
 }) {
   const params = await searchParams;
   const aba = resolveAba(params.aba, params.fila);
+  const pageSize = pageSizeOf(params.tamanho);
   const page = Math.max(Number(params.page || 1), 1);
   const numero = (params.numero || "").trim();
   const nome = (params.nome || "").trim();
@@ -77,8 +86,8 @@ export default async function PedidosPage({
       from ctl_orders
       ${sheetWhere(sql, filters)}
       ${sheetOrder(sql, archive)}
-      limit ${PAGE_SIZE}
-      offset ${(page - 1) * PAGE_SIZE}
+      limit ${pageSize}
+      offset ${(page - 1) * pageSize}
     `,
     sql<{ total_count: number }[]>`
       select count(*)::int as total_count
@@ -88,9 +97,9 @@ export default async function PedidosPage({
   ]);
   const count = counted[0]?.total_count ?? 0;
   const rows = found.map((order) => toSheetOrder(order));
-  const pages = Math.max(Math.ceil((count ?? 0) / PAGE_SIZE), 1);
+  const pages = Math.max(Math.ceil((count ?? 0) / pageSize), 1);
   const hint = ABAS.find((item) => item.id === aba)?.hint;
-  const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila };
+  const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila, tamanho: pageSize };
   const filtering = Boolean(numero || nome || idref || comId || legacy || params.fila);
   const summary = filterSummary({ numero, nome, idref, comId, legacy, fila: params.fila });
 
@@ -124,7 +133,7 @@ export default async function PedidosPage({
         ))}
       </nav>
       <form
-        className="card grid items-end gap-3 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_10rem_auto]"
+        className="card grid items-end gap-3 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_8rem_7rem_auto]"
         action="/pedidos"
       >
         <label className="grid gap-1 text-sm">
@@ -147,12 +156,16 @@ export default async function PedidosPage({
             <option value="sem">Sem ID</option>
           </select>
         </label>
+        <label className="grid gap-1 text-sm">
+          Por página
+          <PageSizeSelect value={pageSize} />
+        </label>
         <input type="hidden" name="aba" value={aba} />
         {params.fila ? <input type="hidden" name="fila" value={params.fila} /> : null}
         <div className="flex gap-2">
           <button type="submit">Buscar</button>
           {filtering ? (
-            <Link className="button secondary" href={href({ aba })}>
+            <Link className="button secondary" href={href({ aba, tamanho: pageSize })}>
               Limpar
             </Link>
           ) : null}
@@ -374,6 +387,7 @@ function href(params: {
   fila?: string;
   aba?: string;
   page?: number;
+  tamanho?: number;
 }) {
   const search = new URLSearchParams();
   if (params.aba) search.set("aba", params.aba);
@@ -382,6 +396,7 @@ function href(params: {
   if (params.idref) search.set("idref", params.idref);
   if (params.com_id === "com" || params.com_id === "sem") search.set("com_id", params.com_id);
   if (params.fila) search.set("fila", params.fila);
+  if (params.tamanho && params.tamanho !== DEFAULT_PAGE_SIZE) search.set("tamanho", String(params.tamanho));
   if (params.page && params.page > 1) search.set("page", String(params.page));
   const query = search.toString();
   return query ? `/pedidos?${query}` : "/pedidos";
