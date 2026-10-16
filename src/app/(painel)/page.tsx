@@ -304,23 +304,39 @@ export default async function HomePage({
         <table>
           <thead>
             <tr>
-              <th>Vendas do mês</th>
-              <th>Falta para a meta</th>
-              <th>Resultado</th>
-              <th>Pedidos sem custo</th>
+              <th>Venda</th>
+              <th>Custo</th>
+              <th>Lucro</th>
+              <th>Sem compra</th>
+              <th>Sem alfândega</th>
+              <th>Sem envio</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td className="num">{brl(summary.vendasLojas)}</td>
-              <td className="num">{brl(summary.falta)}</td>
-              <td className="num text-ok">{brl(summary.resultado)}</td>
-              <td className={`num ${summary.semCompra ? "text-danger" : ""}`}>{summary.semCompra}</td>
+              <td className="num">{brl(summary.vendas)}</td>
+              <td className="num">{brl(summary.custoTotal)}</td>
+              <td className={`num ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(summary.resultado)}</td>
+              <td className={`num ${summary.semCompra ? "text-danger" : ""}`}>
+                <Link className="underline" href={`/financeiro?month=${month}&falta=compra`}>
+                  {summary.semCompra}
+                </Link>
+              </td>
+              <td className={`num ${summary.semAlfandega ? "text-danger" : ""}`}>
+                <Link className="underline" href={`/financeiro?month=${month}&falta=alfandega`}>
+                  {summary.semAlfandega}
+                </Link>
+              </td>
+              <td className={`num ${summary.semEnvio ? "text-danger" : ""}`}>
+                <Link className="underline" href={`/financeiro?month=${month}&falta=envio`}>
+                  {summary.semEnvio}
+                </Link>
+              </td>
             </tr>
           </tbody>
         </table>
-        {summary.semCompra ? (
-          <p className="mt-3 text-sm text-danger">O resultado trata custo de compra vazio como zero.</p>
+        {summary.semCompra || summary.semAlfandega || summary.semEnvio ? (
+          <p className="mt-3 text-sm text-danger">Pedido com venda e valor vazio entra no lucro como zero.</p>
         ) : null}
       </section>
     </div>

@@ -38,6 +38,7 @@ test("agosto só com encomenda fecha como o cabeçalho da planilha", () => {
   close(summary.percentual, 0.0956);
   assert.equal(summary.semCompra, 1);
   assert.equal(summary.semTaxa, 0);
+  assert.equal(summary.semAlfandega, 1);
   assert.equal(summary.semEnvio, 1);
   close(summary.mediaVenda, 133854.72);
   close(summary.mediaTaxa, 27090.48);

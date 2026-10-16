@@ -9,10 +9,52 @@ function pedidos(count: number) {
   return `${count} ${count === 1 ? "pedido" : "pedidos"}`;
 }
 
+type Gap = "compra" | "alfandega" | "envio";
+
+function gapOf(value: string | undefined): Gap | null {
+  if (value === "compra" || value === "alfandega" || value === "envio") return value;
+  return null;
+}
+
+function missingGaps(order: { sale_amount: unknown; purchase_amount: unknown; import_tax: unknown; shipping_cost: unknown }): Gap[] {
+  if (asNumber(order.sale_amount) == null) return [];
+  const gaps: Gap[] = [];
+  if (asNumber(order.purchase_amount) == null) gaps.push("compra");
+  if (asNumber(order.import_tax) == null) gaps.push("alfandega");
+  if (asNumber(order.shipping_cost) == null) gaps.push("envio");
+  return gaps;
+}
+
+function gapLabel(gap: Gap) {
+  if (gap === "compra") return "compra";
+  if (gap === "alfandega") return "alfândega";
+  return "envio";
+}
+
+function gapHref(month: string, current: Gap | null, gap: Gap) {
+  return current === gap ? `/financeiro?month=${month}` : `/financeiro?month=${month}&falta=${gap}`;
+}
+
+function plain(value: string | null) {
+  if (!value) return "";
+  const text = value.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  return text.length > 80 ? `${text.slice(0, 79)}…` : text;
+}
+
+function GapCard({ href, label, count, active }: { href: string; label: string; count: number; active: boolean }) {
+  return (
+    <Link href={href} className={`card stat block ${active ? "border-ink" : ""}`}>
+      <p className="kicker">{label}</p>
+      <p className={`num mt-2 text-4xl font-medium tracking-tight ${count ? "text-danger" : ""}`}>{count}</p>
+      <p className="mt-1 text-sm text-muted">{count ? "Ver os pedidos" : "Nada em aberto"}</p>
+    </Link>
+  );
+}
+
 export default async function FinanceiroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; erro?: string }>;
+  searchParams: Promise<{ month?: string; erro?: string; falta?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
@@ -67,10 +109,19 @@ export default async function FinanceiroPage({
     order by flow, order_key desc
   `;
   const summary = monthSummary(orders ?? [], asNumber(goal?.target_amount), selected);
+  const falta = gapOf(params.falta);
+  const incomplete = (orders ?? []).filter((order) => {
+    const gaps = missingGaps(order);
+    if (!gaps.length) return false;
+    if (falta === "compra") return gaps.includes("compra");
+    if (falta === "alfandega") return gaps.includes("alfandega");
+    if (falta === "envio") return gaps.includes("envio");
+    return true;
+  });
   const gaps = [
-    summary.semCompra ? `custo de compra em ${pedidos(summary.semCompra)}` : null,
-    summary.semTaxa ? `taxa da máquina em ${pedidos(summary.semTaxa)}` : null,
-    summary.semEnvio ? `envio em ${pedidos(summary.semEnvio)}` : null,
+    summary.semCompra ? `preço de compra em ${pedidos(summary.semCompra)}` : null,
+    summary.semAlfandega ? `taxa alfandegária em ${pedidos(summary.semAlfandega)}` : null,
+    summary.semEnvio ? `custo de envio em ${pedidos(summary.semEnvio)}` : null,
   ].filter((item): item is string => Boolean(item));
 
   return (
@@ -95,6 +146,100 @@ export default async function FinanceiroPage({
         </form>
       </div>
       {params.erro ? <p className="text-sm text-danger">Não foi possível salvar a meta.</p> : null}
+
+      <section className="grid gap-3 sm:grid-cols-3">
+        <article className="card stat">
+          <p className="kicker">Venda</p>
+          <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.vendas)}</p>
+          <p className="mt-1 text-sm text-muted">Loja, encomenda e créditos.</p>
+        </article>
+        <article className="card stat">
+          <p className="kicker">Custo</p>
+          <p className="num mt-2 text-3xl font-medium tracking-tight text-danger">{brl(summary.custoTotal)}</p>
+          <p className="mt-1 text-sm text-muted">Compra, envio, alfândega e taxa da máquina.</p>
+        </article>
+        <article className="card stat">
+          <p className="kicker">Lucro</p>
+          <p className={`num mt-2 text-3xl font-medium tracking-tight ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
+            {brl(summary.resultado)}
+          </p>
+          <p className="mt-1 text-sm text-muted">Margem {percent(summary.margem)}. Vazio entra como zero.</p>
+        </article>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-3">
+        <GapCard
+          href={gapHref(selected, falta, "compra")}
+          label="Sem preço de compra"
+          count={summary.semCompra}
+          active={falta === "compra"}
+        />
+        <GapCard
+          href={gapHref(selected, falta, "alfandega")}
+          label="Sem taxa alfandegária"
+          count={summary.semAlfandega}
+          active={falta === "alfandega"}
+        />
+        <GapCard
+          href={gapHref(selected, falta, "envio")}
+          label="Sem custo de envio"
+          count={summary.semEnvio}
+          active={falta === "envio"}
+        />
+      </section>
+
+      <section className="card overflow-x-auto">
+        <h2 className="section-title">
+          {falta === "compra"
+            ? "Sem preço de compra"
+            : falta === "alfandega"
+              ? "Sem taxa alfandegária"
+              : falta === "envio"
+                ? "Sem custo de envio"
+                : "Pedidos com lançamento faltando"}
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          {incomplete.length
+            ? `${pedidos(incomplete.length)} com venda e ${falta ? gapLabel(falta) : "pelo menos um desses valores"} em branco.`
+            : falta
+              ? `Nenhum pedido com venda está sem ${gapLabel(falta)}.`
+              : "Nenhum pedido com venda está sem compra, alfândega ou envio."}
+        </p>
+        {incomplete.length ? (
+          <table className="mt-3">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Venda</th>
+                <th>Compra</th>
+                <th>Alfândega</th>
+                <th>Envio</th>
+                <th>Falta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incomplete.map((order) => {
+                const pending = missingGaps(order);
+                return (
+                  <tr key={order.id}>
+                    <td>
+                      <Link href={`/pedidos/${order.id}`} className="underline">
+                        {order.label || order.order_key}
+                      </Link>
+                      <div className="text-xs text-muted">{plain(order.product_name || order.reference)}</div>
+                    </td>
+                    <td className="num">{brl(order.sale_amount)}</td>
+                    <td className={`num ${pending.includes("compra") ? "text-danger" : ""}`}>{brl(order.purchase_amount)}</td>
+                    <td className={`num ${pending.includes("alfandega") ? "text-danger" : ""}`}>{brl(order.import_tax)}</td>
+                    <td className={`num ${pending.includes("envio") ? "text-danger" : ""}`}>{brl(order.shipping_cost)}</td>
+                    <td>{pending.map(gapLabel).join(", ")}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : null}
+      </section>
 
       <section className="card overflow-x-auto">
         <h2 className="section-title">Resultado financeiro</h2>

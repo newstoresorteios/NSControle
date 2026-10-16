@@ -32,6 +32,7 @@ export type MonthSummary = {
   mediaEnvio: number | null;
   semCompra: number;
   semTaxa: number;
+  semAlfandega: number;
   semEnvio: number;
   mediaRealizada: number | null;
   mediaARealizar: number | null;
@@ -100,6 +101,7 @@ export function monthSummary(
     mediaEnvio: average(orders, "shipping_cost"),
     semCompra: missing(orders, "purchase_amount"),
     semTaxa: missing(orders, "payment_fee"),
+    semAlfandega: missing(orders, "import_tax"),
     semEnvio: missing(orders, "shipping_cost"),
     mediaRealizada: elapsed ? vendasLojas / elapsed : null,
     mediaARealizar: meta != null && daysInMonth ? meta / daysInMonth : null,
