@@ -14,6 +14,8 @@ export type SheetOrder = {
   origin: string | null;
   product_name: string | null;
   supplier_ref: string | null;
+  supplier_name: string | null;
+  supplier_purchase_date: string | null;
   purchased: boolean;
   cpf_linked: boolean;
   tax_paid: boolean;
@@ -153,6 +155,8 @@ function AcompanhamentoHead() {
       <th>Dias</th>
       <th>Dias fornecedor</th>
       <th>Fornecedor</th>
+      <th>Nome do fornecedor</th>
+      <th>Compra ao fornecedor</th>
     </>
   );
 }
@@ -213,6 +217,8 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
       <td>
         <TextCell name="origin" value={row.origin} list="origens" onSave={save.run} />
       </td>
+      <td><TextCell name="supplier_name" value={row.supplier_name} onSave={save.run} /></td>
+      <td><DateCell name="supplier_purchase_date" value={row.supplier_purchase_date} onSave={save.run} /></td>
     </>
   );
 }

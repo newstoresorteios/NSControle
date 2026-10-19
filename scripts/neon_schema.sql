@@ -60,6 +60,9 @@ create table if not exists public.ctl_orders (
   ) stored,
   supplier_days integer,
   supplier_ref text,
+  supplier_name text,
+  supplier_purchase_date date,
+  tax_identified_at timestamptz,
   notes_internal text,
   notes_robot text,
   notes_human text,
@@ -80,6 +83,7 @@ create index if not exists ctl_orders_month_idx on public.ctl_orders (finance_mo
 create index if not exists ctl_orders_commercial_idx on public.ctl_orders (commercial_status);
 create index if not exists ctl_orders_situation_idx on public.ctl_orders (tracking_situation);
 create index if not exists ctl_orders_tray_modified_idx on public.ctl_orders (tray_modified_at) where tray_modified_at is not null;
+create index if not exists ctl_orders_tax_identified_idx on public.ctl_orders (tax_identified_at desc) where tax_identified_at is not null;
 
 drop trigger if exists ctl_orders_touch on public.ctl_orders;
 create trigger ctl_orders_touch
@@ -152,8 +156,14 @@ create table if not exists public.ctl_cancellations (
   window_note text,
   status text,
   gateway text,
+  source text,
+  source_occurrence text,
   created_at timestamptz not null default now()
 );
+
+create unique index if not exists ctl_cancellations_source_occurrence_uidx
+  on public.ctl_cancellations (source, source_occurrence)
+  where source is not null and source_occurrence is not null;
 
 create table if not exists public.ctl_tray_sync (
   id text primary key,

@@ -85,7 +85,7 @@ test("cancelamento zera a venda e gera estorno", () => {
   assert.equal(draft.sale_amount, null);
   assert.equal(draft.delivered, false);
   const cancel = cancellationFromTray(draft, "order-id");
-  assert.equal(cancel?.amount, 200);
+  assert.equal(cancel?.amount, null);
   assert.equal(cancel?.order_key, "50");
   assert.equal(cancel?.model, "Caneta");
   assert.equal(cancel?.gateway, "Cartão");
@@ -124,6 +124,51 @@ test("atualização da loja não apaga custo nem origem já preenchidos", () => 
   assert.equal(merged.row.commercial_status, "A ENVIAR");
   assert.equal(merged.row.product_name, "Relógio");
   assert.equal(merged.row.purchase_date, undefined);
+});
+
+test("sincronização preserva produto, referência, pagamento e rastreio preenchidos manualmente", () => {
+  const draft = buildTrayDraft(paid);
+  assert.ok(draft);
+  const existing: StoredOrder = {
+    id: "abc", order_key: "1200", flow: "loja_nova", finance_month: "2026-10-01",
+    label: "Pedido 1200", origin: "Europa", product_name: "Produto corrigido",
+    reference: "REF-MANUAL", commercial_status: null, sale_amount: 1500.5,
+    payment_date: "2026-10-02", purchase_date: null,
+    tracking_code: "RASTREIO-MANUAL", delivered: false,
+    data_source: "manual", tray_modified_at: null,
+  };
+  const row = mergeTrayOrder(existing, draft).row;
+  for (const field of ["product_name", "reference", "payment_date", "tracking_code"]) {
+    assert.equal(row[field], undefined, `${field} não deve ser substituído`);
+  }
+});
+
+test("edição do produto em pedido criado pela Tray persiste após sincronização", () => {
+  const draft = buildTrayDraft(paid);
+  assert.ok(draft);
+  const existing: StoredOrder = {
+    id: "abc", order_key: "1200", flow: "loja_nova", finance_month: "2026-10-01",
+    label: "Pedido 1200", origin: "Loja", product_name: "Produto corrigido pela equipe",
+    reference: "Relógio", commercial_status: "A ENVIAR", sale_amount: 1500.5,
+    payment_date: "2026-10-03", purchase_date: "2026-10-03",
+    tracking_code: "AB123456789BR", delivered: false,
+    data_source: "tray", tray_modified_at: null,
+  };
+  const row = mergeTrayOrder(existing, draft).row;
+  assert.equal(row.product_name, undefined);
+});
+
+test("sincronização da loja não regride data de evento já acompanhada", () => {
+  const draft = buildTrayDraft(paid);
+  assert.ok(draft);
+  const existing: StoredOrder = {
+    id: "abc", order_key: "1200", flow: "loja_nova", finance_month: "2026-09-01",
+    label: null, origin: "Loja", product_name: null, reference: null,
+    commercial_status: null, sale_amount: null, payment_date: null, purchase_date: null,
+    tracking_code: "AB123456789BR", tracking_event_at: "2026-10-16T15:00:00.000Z",
+    delivered: false, data_source: "tray", tray_modified_at: null,
+  };
+  assert.equal(mergeTrayOrder(existing, draft).row.tracking_event_at, undefined);
 });
 
 test("frete da loja preenche custo vazio e preserva o da planilha", () => {

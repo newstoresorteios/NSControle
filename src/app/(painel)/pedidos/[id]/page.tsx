@@ -99,7 +99,9 @@ export default async function PedidoPage({
           <textarea name="tracking_alert" defaultValue={order.tracking_alert || ""} />
         </label>
         <Field label="Evento do rastreio" name="tracking_event_at" type="datetime-local" defaultValue={localDateTime(order.tracking_event_at)} />
-        <Field label="Compra" name="purchase_date" type="date" defaultValue={dateInput(order.purchase_date)} />
+        <Field label="Data do pedido de origem" name="purchase_date" type="date" defaultValue={dateInput(order.purchase_date)} />
+        <Field label="Nome do fornecedor" name="supplier_name" defaultValue={order.supplier_name} />
+        <Field label="Data da compra ao fornecedor" name="supplier_purchase_date" type="date" defaultValue={dateInput(order.supplier_purchase_date)} />
         <Field label="Pagamento" name="payment_date" type="date" defaultValue={dateInput(order.payment_date)} />
         <Field label="Dias do fornecedor" name="supplier_days" defaultValue={order.supplier_days} />
         <Field label="Valor de venda" name="sale_amount" defaultValue={order.sale_amount} />

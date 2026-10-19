@@ -52,7 +52,7 @@ test("cancelado zera a venda e não apaga o status comercial já preenchido quan
     commercial_status: "A ENVIAR VINDI",
     sale_amount: 100,
     payment_date: null,
-    purchase_date: null,
+    purchase_date: "2026-09-12",
     tracking_code: null,
     delivered: false,
     data_source: "planilha",
@@ -64,4 +64,8 @@ test("cancelado zera a venda e não apaga o status comercial já preenchido quan
   const kept = applyBiDraft(existing, open);
   assert.equal(kept.row.commercial_status, undefined);
   assert.equal(kept.row.sale_amount, 6136.99);
+  assert.equal(kept.row.data_source, undefined);
+  assert.equal(kept.row.purchase_date, undefined);
+  assert.equal(kept.row.origin, undefined);
+  assert.equal(kept.row.finance_month, undefined);
 });

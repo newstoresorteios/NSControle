@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createCancellation } from "@/app/(painel)/cancelamentos/actions";
+import { createCancellation, updateCancellation } from "@/app/(painel)/cancelamentos/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { brl, shortDate } from "@/lib/format";
@@ -7,7 +7,7 @@ import { brl, shortDate } from "@/lib/format";
 export default async function CancelamentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string }>;
+  searchParams: Promise<{ erro?: string; ok?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
@@ -24,6 +24,7 @@ export default async function CancelamentosPage({
         <p className="text-muted">Estornos e a data combinada para devolver.</p>
       </div>
       {params.erro ? <p className="text-sm text-danger">Não foi possível registrar o cancelamento.</p> : null}
+      {params.ok ? <p className="text-sm text-ok">Cancelamento atualizado.</p> : null}
       <details className="card">
         <summary className="section-title">Novo cancelamento</summary>
         <form action={createCancellation} className="mt-3 grid gap-3 md:grid-cols-3">
@@ -48,9 +49,11 @@ export default async function CancelamentosPage({
               <th>Modelo</th>
               <th>Valor</th>
               <th>Devolver até</th>
+              <th>Devolvido em</th>
               <th>Status</th>
               <th>Meio</th>
               <th>Banco</th>
+              <th>Ficha</th>
             </tr>
           </thead>
           <tbody>
@@ -68,9 +71,28 @@ export default async function CancelamentosPage({
                 <td>{item.model || "—"}</td>
                 <td className="num">{brl(item.amount)}</td>
                 <td>{shortDate(item.due_date)}</td>
+                <td>{item.done_date ? shortDate(item.done_date) : "Pendente"}</td>
                 <td>{item.status || "—"}</td>
                 <td>{item.gateway || item.refund_method || "—"}</td>
                 <td>{item.bank_details || "—"}</td>
+                <td>
+                  <details>
+                    <summary className="cursor-pointer underline">Editar</summary>
+                    <form action={updateCancellation} className="mt-3 grid min-w-72 gap-2">
+                      <input type="hidden" name="id" value={item.id} />
+                      <label className="grid gap-1 text-sm">Modelo<input name="model" defaultValue={item.model ?? ""} /></label>
+                      <label className="grid gap-1 text-sm">Valor<input name="amount" defaultValue={item.amount ?? ""} /></label>
+                      <label className="grid gap-1 text-sm">Meio<input name="gateway" defaultValue={item.gateway ?? ""} /></label>
+                      <label className="grid gap-1 text-sm">Modo do estorno<input name="refund_method" defaultValue={item.refund_method ?? ""} /></label>
+                      <label className="grid gap-1 text-sm">Status<input name="status" defaultValue={item.status ?? ""} /></label>
+                      <label className="grid gap-1 text-sm">Devolver até<input name="due_date" type="date" defaultValue={item.due_date ? String(item.due_date).slice(0, 10) : ""} /></label>
+                      <label className="grid gap-1 text-sm">Devolvido em<input name="done_date" type="date" defaultValue={item.done_date ? String(item.done_date).slice(0, 10) : ""} /></label>
+                      <label className="grid gap-1 text-sm">Dados bancários<input name="bank_details" defaultValue={item.bank_details ?? ""} /></label>
+                      <label className="grid gap-1 text-sm">Motivo<input name="reason" defaultValue={item.reason ?? ""} /></label>
+                      <button type="submit">Salvar</button>
+                    </form>
+                  </details>
+                </td>
               </tr>
             ))}
           </tbody>

@@ -207,13 +207,21 @@ async function saveOrder(id: string, row: Record<string, unknown>): Promise<stri
 async function writeCancellation(draft: TrayDraft, orderId: string | null) {
   const cancel = cancellationFromTray(draft, orderId);
   if (!cancel) return false;
-  const existing = await db()<{ id: string }[]>`
-    select id from ctl_cancellations where order_key = ${draft.order_key} limit 1
-  `;
-  if (existing.length > 0) return false;
   try {
-    await insertRow("ctl_cancellations", cancel);
-    return true;
+    const inserted = await db()<{ id: string }[]>`
+      insert into ctl_cancellations
+        (order_id, order_key, model, amount, status, gateway, refund_method, reason, source, source_occurrence)
+      select ${cancel.order_id}, ${cancel.order_key}, ${cancel.model}, ${cancel.amount}, ${cancel.status},
+        ${cancel.gateway}, ${cancel.refund_method}, ${cancel.reason}, 'tray', ${draft.order_key}
+      where not exists (
+        select 1 from ctl_cancellations
+        where order_key = ${draft.order_key}
+      )
+      on conflict (source, source_occurrence)
+        where source is not null and source_occurrence is not null do nothing
+      returning id
+    `;
+    return inserted.length > 0;
   } catch {
     return false;
   }

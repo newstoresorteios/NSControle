@@ -2,6 +2,27 @@
 
 Painel interno de pedidos, financeiro, estoque, compras de clientes e cancelamentos.
 
+## Ajustes operacionais de 16/10/2026
+
+Antes de usar os novos campos de fornecedor e a fila de taxas, confirme que o banco de teste é
+de desenvolvimento e só então revise e aplique nele a migração
+`scripts/migrations/20261016_nscontrole_operational_fields.sql`. O código depende das colunas
+novas. A aplicação em produção exige uma etapa separada; não há backfill.
+Para voltar ao código anterior, mantenha as colunas e seus dados.
+
+Em **Compras de clientes**, a ficha permite corrigir CPF, endereço e demais dados sem recriar a compra.
+O cadastro de **Estoque** continua independente de pedido e a data de compra é opcional.
+Em **Pedidos**, “Data do pedido de origem” e “Data da compra ao fornecedor” são campos distintos.
+Em **Cancelamentos**, “Devolver até” é prazo e “Devolvido em” é a data efetiva. O financeiro
+mostra reembolsos por essa data em um bloco separado; eles ainda não são abatidos do resultado.
+Em **Financeiro > Taxas**, a equipe confirma a cobrança por pedido ou rastreio, informa o valor
+e confirma o pagamento em ações separadas. A fila não executa pagamentos ou mensagens.
+
+As regras ainda pendentes e a validação local estão em `docs/implementation-guide-progress.md`.
+Mantenha a planilha em paralelo até conciliar uma amostra autorizada por pedido, loja,
+competência, custo, taxa e reembolso. Os scripts de reimportação substituem dados e não fazem
+parte deste fluxo de atualização.
+
 ```bash
 npm install
 npm run dev
@@ -28,7 +49,7 @@ Fora do painel, a Vercel dispara `/api/tray/sync` uma vez por dia, às 8h de Bra
 curl -X POST "$APP_URL/api/tray/sync" -H "Authorization: Bearer $TRAY_SYNC_SECRET"
 ```
 
-Esse caminho usa `SUPABASE_SERVICE_ROLE_KEY`. `?force=1` ignora a pausa de 8 minutos entre rodadas. A mesma chamada também consulta o último evento na API Rastro dos Correios.
+Esse caminho aceita `CRON_SECRET` ou `TRAY_SYNC_SECRET` no Bearer e usa a conexão PostgreSQL configurada no servidor. A rota atual não usa `SUPABASE_SERVICE_ROLE_KEY`. `?force=1` ignora a pausa de 8 minutos entre rodadas. A mesma chamada também consulta o último evento na API Rastro dos Correios; não a acione na validação local sem mocks.
 
 ## Rastreio (Correios)
 

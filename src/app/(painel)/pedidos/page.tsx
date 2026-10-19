@@ -29,7 +29,7 @@ const FILAS: Record<string, string> = {
 };
 
 const COLUMNS =
-  "id, label, order_key, origin, product_name, supplier_ref, purchased, cpf_linked, tax_paid, delivered, tracking_code, tracking_situation, tracking_alert, tracking_correios, tracking_event_at, purchase_date, payment_date, commercial_status, supplier_days, notes_internal, notes_robot, notes_human";
+  "id, label, order_key, origin, product_name, supplier_ref, supplier_name, supplier_purchase_date, purchased, cpf_linked, tax_paid, delivered, tracking_code, tracking_situation, tracking_alert, tracking_correios, tracking_event_at, purchase_date, payment_date, commercial_status, supplier_days, notes_internal, notes_robot, notes_human";
 
 export default async function PedidosPage({
   searchParams,

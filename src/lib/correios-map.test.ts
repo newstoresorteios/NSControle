@@ -65,3 +65,16 @@ test("último evento é o mais novo", () => {
   ]);
   assert.equal(event?.descricao, "Objeto em trânsito");
 });
+
+test("eventos fora de ordem conservam o mais recente", () => {
+  const event = latestEvent([
+    { descricao: "Objeto entregue", dtHrCriado: "2026-10-06T11:00:00" },
+    { descricao: "Objeto postado", dtHrCriado: "2026-10-01T10:00:00" },
+  ]);
+  assert.equal(event?.descricao, "Objeto entregue");
+});
+
+test("evento sem descrição ou sem data confiável não cria atualização datada", () => {
+  assert.equal(statusFromEvent({ descricao: "", dtHrCriado: "2026-10-06T11:00:00" }, now), null);
+  assert.equal(statusFromEvent({ descricao: "Estado desconhecido", dtHrCriado: "inválido" }, now)?.tracking_event_at, null);
+});

@@ -162,7 +162,7 @@ export async function scheduleBiSync() {
 }
 
 function changed(existing: StoredOrder, row: Record<string, unknown>) {
-  for (const key of ["sale_amount", "commercial_status", "tracking_code", "delivered", "payment_date", "product_name"] as const) {
+  for (const key of ["sale_amount", "commercial_status", "tracking_code", "delivered", "payment_date", "product_name", "finance_month", "data_source", "shipping_cost"] as const) {
     if (!(key in row)) continue;
     const next = row[key];
     const previous = existing[key];

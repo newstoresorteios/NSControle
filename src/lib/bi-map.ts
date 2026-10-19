@@ -1,4 +1,4 @@
-import { buildTrayDraft, dateOnly, mergeTrayOrder, monthStart, type StoredOrder, type TrayDraft } from "./tray-map";
+import { buildTrayDraft, dateOnly, mergeTrayOrder, monthStart, type StoredOrder, type TrayDraft } from "./tray-map.ts";
 
 export type BiOrder = {
   id?: unknown;
@@ -86,7 +86,9 @@ export function draftFromBi(order: BiOrder, shipment?: BiShipment): TrayDraft | 
 
 export function applyBiDraft(existing: StoredOrder | null, draft: TrayDraft) {
   const merged = mergeTrayOrder(existing, draft);
-  merged.row.data_source = "bi";
+  if (!existing || (existing.data_source !== "planilha" && existing.data_source !== "manual")) {
+    merged.row.data_source = "bi";
+  }
   if (existing?.commercial_status && draft.commercial_status == null) {
     delete merged.row.commercial_status;
   }

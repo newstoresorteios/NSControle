@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { monthSummary, type MoneyOrder } from "./finance.ts";
+import { refundTotal } from "./refunds.ts";
 
 function close(actual: number | null, expected: number) {
   assert.notEqual(actual, null);
@@ -83,4 +84,24 @@ test("média ignora linha sem valor", () => {
   close(summary.mediaEnvio, 20);
   close(summary.retorno, 4);
   assert.equal(monthSummary([], null, "2026-10").retorno, null);
+});
+
+test("cenário sintético deduz cada taxa uma vez e mostra devolução no mês realizado", () => {
+  const order: MoneyOrder = {
+    flow: "loja_nova",
+    sale_amount: 1000,
+    purchase_amount: 600,
+    payment_fee: 30,
+    shipping_cost: 20,
+    import_tax: 50,
+  };
+  const summary = monthSummary([order], null, "2026-10", new Date(2026, 9, 16));
+  assert.equal(summary.taxas, 100);
+  assert.equal(summary.custoTotal, 700);
+  assert.equal(summary.resultado, 300);
+
+  const refund = [{ done_date: "2026-11-03", amount: "250" }];
+  assert.equal(refundTotal(refund, "2026-10"), 0);
+  assert.equal(refundTotal(refund, "2026-11"), 250);
+  assert.equal(summary.resultado, 300);
 });

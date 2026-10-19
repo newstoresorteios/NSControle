@@ -5,8 +5,15 @@ import { redirect } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { decimal, flag, integer, monthDate, text } from "@/lib/form";
+import { calendarDate, nonnegativeMoney } from "@/lib/operational";
 
 const SENTINEL = "0001-01-01";
+
+function orderCostsValid(formData: FormData) {
+  return ["purchase_amount", "payment_fee", "shipping_cost", "import_tax"].every((field) =>
+    nonnegativeMoney(String(formData.get(field) ?? "")).ok,
+  );
+}
 
 function orderFields(formData: FormData) {
   const financeMonth = monthDate(formData, "finance_month");
@@ -29,6 +36,8 @@ function orderFields(formData: FormData) {
     tracking_correios: text(formData, "tracking_correios"),
     tracking_event_at: text(formData, "tracking_event_at"),
     purchase_date: text(formData, "purchase_date"),
+    supplier_name: text(formData, "supplier_name"),
+    supplier_purchase_date: text(formData, "supplier_purchase_date"),
     payment_date: text(formData, "payment_date"),
     sale_amount: decimal(formData, "sale_amount"),
     purchase_amount: decimal(formData, "purchase_amount"),
@@ -45,6 +54,10 @@ function orderFields(formData: FormData) {
 
 export async function createOrder(formData: FormData) {
   await requireTeam();
+  if (!orderCostsValid(formData)) redirect("/pedidos?erro=salvar");
+  if (text(formData, "supplier_purchase_date") && !calendarDate(text(formData, "supplier_purchase_date")!)) {
+    redirect("/pedidos?erro=salvar");
+  }
   const fields = orderFields(formData);
   if (!fields.order_key) redirect("/pedidos?erro=numero");
   try {
@@ -60,6 +73,7 @@ const TEXT_FIELDS = [
   "origin",
   "product_name",
   "supplier_ref",
+  "supplier_name",
   "tracking_code",
   "notes_robot",
   "notes_human",
@@ -126,11 +140,12 @@ export async function patchOrder(id: string, raw: Record<string, unknown>) {
   for (const key of FLAG_FIELDS) {
     if (key in raw && typeof raw[key] === "boolean") patch[key] = raw[key];
   }
-  for (const key of ["purchase_date", "payment_date"] as const) {
+  for (const key of ["purchase_date", "payment_date", "supplier_purchase_date"] as const) {
     if (!(key in raw)) continue;
     const value = typeof raw[key] === "string" ? raw[key].trim() : "";
     if (!value) patch[key] = null;
-    else if (/^\d{4}-\d{2}-\d{2}$/.test(value)) patch[key] = value;
+    else if (key === "supplier_purchase_date" ? calendarDate(value) : /^\d{4}-\d{2}-\d{2}$/.test(value)) patch[key] = value;
+    else if (key === "supplier_purchase_date") return { ok: false as const };
   }
   if ("tracking_event_at" in raw) {
     const value = typeof raw.tracking_event_at === "string" ? raw.tracking_event_at.trim() : "";
@@ -162,6 +177,10 @@ export async function patchOrder(id: string, raw: Record<string, unknown>) {
 
 export async function updateOrder(formData: FormData) {
   await requireTeam();
+  if (!orderCostsValid(formData)) redirect(`/pedidos/${text(formData, "id") ?? ""}?erro=custo`);
+  if (text(formData, "supplier_purchase_date") && !calendarDate(text(formData, "supplier_purchase_date")!)) {
+    redirect(`/pedidos/${text(formData, "id") ?? ""}?erro=data`);
+  }
   const id = text(formData, "id");
   if (!id) redirect("/pedidos");
   const fields = orderFields(formData);

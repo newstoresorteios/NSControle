@@ -3,6 +3,8 @@ import { saveGoal } from "@/app/(painel)/financeiro/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { monthSummary } from "@/lib/finance";
+import { refundTotal } from "@/lib/refunds";
+import { TaxQueue } from "./tax-queue";
 import { FLOW_LABEL, asNumber, brl, monthLabel, percent } from "@/lib/format";
 
 function pedidos(count: number) {
@@ -54,12 +56,15 @@ function GapCard({ href, label, count, active }: { href: string; label: string; 
 export default async function FinanceiroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; erro?: string; falta?: string }>;
+  searchParams: Promise<{ month?: string; erro?: string; falta?: string; aba?: string; status?: string; ok?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
+  if (params.aba === "taxas") {
+    return <TaxQueue status={params.status} error={params.erro} ok={params.ok} />;
+  }
   const sql = db();
-  const [goals, monthRows] = await Promise.all([
+  const [goals, monthRows, refundMonths] = await Promise.all([
     sql<{ month: string; target_amount: string }[]>`
       select month, target_amount from ctl_monthly_goals order by month desc
     `,
@@ -69,22 +74,30 @@ export default async function FinanceiroPage({
       order by finance_month desc
       limit 1000
     `,
+    sql<{ month: string }[]>`
+      select distinct date_trunc('month', done_date)::date as month
+      from ctl_cancellations where done_date is not null
+    `,
   ]);
   const months = [
     ...new Set(
       [
         ...goals.map((goal) => String(goal.month).slice(0, 7)),
         ...monthRows.map((row) => String(row.finance_month).slice(0, 7)),
+        ...refundMonths.map((row) => String(row.month).slice(0, 7)),
       ].filter((month) => /^\d{4}-\d{2}$/.test(month)),
     ),
   ].sort((a, b) => b.localeCompare(a));
   const selected = params.month && months.includes(params.month) ? params.month : months[0];
   if (!selected) {
-    return <p>Nenhum mês financeiro importado.</p>;
+    return <div className="grid gap-4"><p>Nenhum mês financeiro importado.</p><Link className="button w-fit" href="/financeiro?aba=taxas">Abrir fila de taxas</Link></div>;
   }
   const monthDate = `${selected}-01`;
   const goal = goals.find((item) => String(item.month).slice(0, 7) === selected);
-  const orders = await sql<
+  const nextMonthDate = new Date(`${monthDate}T00:00:00Z`);
+  nextMonthDate.setUTCMonth(nextMonthDate.getUTCMonth() + 1);
+  const monthEnd = nextMonthDate.toISOString().slice(0, 10);
+  const [orders, refunds] = await Promise.all([sql<
     {
       id: string;
       label: string | null;
@@ -99,15 +112,19 @@ export default async function FinanceiroPage({
       payment_fee: string | null;
       shipping_cost: string | null;
       import_tax: string | null;
+      tax_identified_at: string | null;
       gain_amount: string | null;
     }[]
   >`
     select id, label, order_key, flow, reference, product_name, sourcing_status, purchased,
-      sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, gain_amount
+      sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, tax_identified_at, gain_amount
     from ctl_orders
     where finance_month = ${monthDate}
     order by flow, order_key desc
-  `;
+  `, sql<{ done_date: string | null; amount: string | null }[]>`
+    select done_date, amount from ctl_cancellations
+    where done_date >= ${monthDate} and done_date < ${monthEnd}
+  `]);
   const summary = monthSummary(orders ?? [], asNumber(goal?.target_amount), selected);
   const falta = gapOf(params.falta);
   const incomplete = (orders ?? []).filter((order) => {
@@ -118,10 +135,20 @@ export default async function FinanceiroPage({
     if (falta === "envio") return gaps.includes("envio");
     return true;
   });
+  const refunded = refundTotal(refunds, selected);
+  const refundsWithoutAmount = refunds.filter((refund) => refund.amount == null).length;
+  const importTaxesWithoutAmount = orders.filter((order) => order.tax_identified_at && order.import_tax == null).length;
+  const negativeCosts = orders.filter((order) =>
+    [order.purchase_amount, order.payment_fee, order.shipping_cost, order.import_tax].some((value) => {
+      const numeric = asNumber(value);
+      return numeric != null && numeric < 0;
+    }),
+  ).length;
   const gaps = [
-    summary.semCompra ? `preço de compra em ${pedidos(summary.semCompra)}` : null,
-    summary.semAlfandega ? `taxa alfandegária em ${pedidos(summary.semAlfandega)}` : null,
-    summary.semEnvio ? `custo de envio em ${pedidos(summary.semEnvio)}` : null,
+    summary.semCompra ? `custo de compra em ${pedidos(summary.semCompra)}` : null,
+    summary.semTaxa ? `taxa da máquina em ${pedidos(summary.semTaxa)}` : null,
+    summary.semEnvio ? `envio em ${pedidos(summary.semEnvio)}` : null,
+    summary.semAlfandega ? `taxa de importação em ${pedidos(summary.semAlfandega)}` : null,
   ].filter((item): item is string => Boolean(item));
 
   return (
@@ -146,6 +173,11 @@ export default async function FinanceiroPage({
         </form>
       </div>
       {params.erro ? <p className="text-sm text-danger">Não foi possível salvar a meta.</p> : null}
+
+      <nav className="flex gap-2">
+        <Link className="button" href={`/financeiro?month=${selected}`}>Resumo mensal</Link>
+        <Link className="button secondary" href="/financeiro?aba=taxas">Taxas</Link>
+      </nav>
 
       <section className="grid gap-3 sm:grid-cols-3">
         <article className="card stat">
@@ -240,7 +272,6 @@ export default async function FinanceiroPage({
           </table>
         ) : null}
       </section>
-
       <section className="card overflow-x-auto">
         <h2 className="section-title">Resultado financeiro</h2>
         <table className="mt-3">
@@ -248,33 +279,42 @@ export default async function FinanceiroPage({
             <tr>
               <th>Total de vendas loja nova</th>
               <th>Total de vendas sob encomenda</th>
-              <th>Custo de compra</th>
-              <th>Custo de taxas e envios</th>
-              <th>Custo total estimado</th>
-              <th>Resultado final</th>
+              <th>Dedução: compra</th>
+              <th>Dedução: taxas e envios</th>
+              <th>Deduções totais estimadas</th>
+              <th>Resultado estimado</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td className="num">{brl(summary.vendasLoja)}</td>
               <td className="num">{brl(summary.vendasEncomenda)}</td>
-              <td className="num text-danger">{brl(summary.custoCompra)}</td>
-              <td className="num text-danger">{brl(summary.taxas)}</td>
-              <td className="num text-danger">{brl(summary.custoTotal)}</td>
+              <td className="num text-danger">{brl(-summary.custoCompra)}</td>
+              <td className="num text-danger">{brl(-summary.taxas)}</td>
+              <td className="num text-danger">{brl(-summary.custoTotal)}</td>
               <td className="num text-ok">{brl(summary.resultado)}</td>
             </tr>
           </tbody>
         </table>
         <p className="mt-3 text-sm text-muted">
-          Taxas e envios reúnem taxa da máquina, frete e taxa de importação. Pedido vindo da loja entra em Loja nova.
-          Sob encomenda é o fluxo marcado na ficha.
+          Taxas e envios reúnem taxa da máquina, frete e taxa de importação. Os totais seguem o fluxo gravado
+          em cada ficha; a identificação de loja velha ainda depende de confirmação.
           {summary.vendasCreditos ? ` NS Créditos ${brl(summary.vendasCreditos)} entram no resultado e ficam fora da meta.` : ""}
         </p>
         {gaps.length ? (
           <p className="mt-2 text-sm text-danger">
-            Falta lançar {gaps.join(", ")}. O resultado trata esse vazio como zero.
+            Falta lançar {gaps.join(", ")}. O resultado está incompleto; valores desconhecidos não são custo zero confirmado.
           </p>
         ) : null}
+        {importTaxesWithoutAmount ? <p className="mt-2 text-sm text-danger">Há {pedidos(importTaxesWithoutAmount)} com taxação identificada e valor ainda não informado.</p> : null}
+        {negativeCosts ? <p className="mt-2 text-sm text-danger">Há {pedidos(negativeCosts)} com custo negativo registrado. Confira a origem e o sinal antes de validar este resultado.</p> : null}
+      </section>
+
+      <section className="card">
+        <h2 className="section-title">Reembolsos realizados em {monthLabel(selected)}</h2>
+        <p className="mt-2 num text-danger">{brl(refunded)}</p>
+        <p className="mt-2 text-sm text-muted">Apurados pela data “Devolvido em”. Exibidos separadamente até definir o regime financeiro; não alteram o resultado estimado acima.</p>
+        {refundsWithoutAmount ? <p className="mt-2 text-sm text-danger">Há {pedidos(refundsWithoutAmount)} com devolução datada e valor não informado. O total acima inclui apenas valores conhecidos.</p> : null}
       </section>
 
       <section className="card grid gap-4 overflow-x-auto lg:grid-cols-[1fr_16rem]">

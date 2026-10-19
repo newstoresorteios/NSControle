@@ -108,7 +108,11 @@ export async function runCorreiosSync(options?: { force?: boolean }): Promise<Co
           report.missing += 1;
           continue;
         }
-        await db()`
+        if (!status.tracking_event_at) {
+          report.missing += 1;
+          continue;
+        }
+        const updated = await db()`
           update ctl_orders set
             tracking_correios = ${status.tracking_correios},
             tracking_situation = ${status.tracking_situation},
@@ -116,8 +120,9 @@ export async function runCorreiosSync(options?: { force?: boolean }): Promise<Co
             delivered = ${status.delivered}
           where delivered = false
             and upper(trim(tracking_code)) = ${object.code}
+            and (tracking_event_at is null or tracking_event_at < ${status.tracking_event_at}::timestamptz)
         `;
-        report.updated += 1;
+        report.updated += updated.count;
       }
       report.missing += codes.filter((code) => !seen.has(code)).length;
     }

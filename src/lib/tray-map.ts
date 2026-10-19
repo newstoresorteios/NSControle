@@ -35,6 +35,7 @@ export type StoredOrder = {
   payment_date: string | null;
   purchase_date: string | null;
   tracking_code: string | null;
+  tracking_event_at?: string | null;
   delivered: boolean;
   data_source: string | null;
   tray_modified_at: string | null;
@@ -276,11 +277,11 @@ export function cancellationFromTray(draft: TrayDraft, orderId: string | null) {
     order_id: orderId,
     order_key: draft.order_key,
     model: draft.product_name,
-    amount: draft.cancel_amount,
+    amount: null,
     status: "Cancelado",
     gateway: draft.payment_method || "Tray",
     refund_method: draft.payment_method,
-    reason: "Cancelado na Tray",
+    reason: "Cancelado na Tray; devolução e valor aguardam confirmação",
   };
 }
 
@@ -331,19 +332,18 @@ export function mergeTrayOrder(
   const label = (existing.label || "").trim();
   if (!label || label === existing.order_key) row.label = draft.label;
   if (!existing.origin) row.origin = draft.origin;
-  if (draft.product_name) row.product_name = draft.product_name;
-  if (draft.reference) row.reference = draft.reference;
+  if (draft.product_name && !existing.product_name) row.product_name = draft.product_name;
+  if (draft.reference && (!sheetOwned || !existing.reference)) row.reference = draft.reference;
   if (draft.commercial_status && (!sheetOwned || !existing.commercial_status)) {
     row.commercial_status = draft.commercial_status;
   }
   if (draft.sale_explicit) row.sale_amount = draft.sale_amount;
-  if (draft.payment_date) row.payment_date = draft.payment_date;
+  if (draft.payment_date && (!sheetOwned || !existing.payment_date)) row.payment_date = draft.payment_date;
   if (!existing.purchase_date && draft.purchase_date) row.purchase_date = draft.purchase_date;
   if (draft.shipping_cost != null && (existing.shipping_cost == null || existing.shipping_cost === "" || !sheetOwned)) {
     row.shipping_cost = draft.shipping_cost;
   }
-  if (draft.tracking_code) row.tracking_code = draft.tracking_code;
-  if (draft.tracking_event_at) row.tracking_event_at = draft.tracking_event_at;
+  if (draft.tracking_code && (!sheetOwned || !existing.tracking_code)) row.tracking_code = draft.tracking_code;
   if (draft.delivered) row.delivered = true;
   else if (draft.cancelled) row.delivered = false;
   const keepMonth = existing.finance_month && existing.data_source !== "tray";
