@@ -7,7 +7,7 @@ import { asNumber, brl } from "@/lib/format";
 export default async function EstoquePage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string; ok?: string }>;
+  searchParams: Promise<{ erro?: string; ok?: string; editar?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
@@ -36,6 +36,7 @@ export default async function EstoquePage({
   const costs = items.map((item) => asNumber(item.cost)).filter((value): value is number => value != null);
   const saleTotal = priced.reduce((sum, value) => sum + value, 0);
   const costTotal = costs.reduce((sum, value) => sum + value, 0);
+  const editing = items.find((item) => item.id === params.editar);
 
   return (
     <div className="grid gap-5">
@@ -45,7 +46,7 @@ export default async function EstoquePage({
           {items.length} peças · venda {brl(saleTotal)} · custo {brl(costTotal)} · resultado {brl(saleTotal - costTotal)}
         </p>
       </div>
-      {params.erro ? <p className="text-sm text-danger">Informe ao menos o modelo.</p> : null}
+      {params.erro ? <p className="text-sm text-danger">Não foi possível salvar. Confira o modelo, os valores e a data.</p> : null}
       {params.ok ? <p className="text-sm text-ok">Item atualizado.</p> : null}
       <details className="card">
         <summary className="section-title">Nova peça</summary>
@@ -62,7 +63,36 @@ export default async function EstoquePage({
           <button type="submit" className="md:col-span-3 md:w-fit">Adicionar</button>
         </form>
       </details>
-      <div className="card overflow-x-auto">
+      {editing ? (
+        <section id="editar-estoque" className="card mx-auto w-full max-w-4xl scroll-mt-28">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
+            <div>
+              <p className="kicker">Estoque</p>
+              <h2 className="section-title mt-1">Editar peça</h2>
+              <p className="mt-1 text-sm text-muted">{editing.brand ? `${editing.brand} · ` : ""}{editing.model}</p>
+            </div>
+            <Link className="button secondary" href="/estoque#lista-estoque">Fechar</Link>
+          </div>
+          <form action={updateInventoryItem} className="grid gap-4 md:grid-cols-2">
+            <input type="hidden" name="id" value={editing.id} />
+            <label className="grid gap-1 text-sm">Marca<input name="brand" defaultValue={editing.brand ?? ""} /></label>
+            <label className="grid gap-1 text-sm">Modelo<input name="model" defaultValue={editing.model} required /></label>
+            <label className="grid gap-1 text-sm">Origem<input name="origin" defaultValue={editing.origin ?? ""} /></label>
+            <label className="grid gap-1 text-sm">Rastreio<input name="tracking_code" defaultValue={editing.tracking_code ?? ""} /></label>
+            <label className="grid gap-1 text-sm">Preço PIX<input name="sale_price" defaultValue={editing.sale_price ?? ""} inputMode="decimal" /></label>
+            <label className="grid gap-1 text-sm">Custo<input name="cost" defaultValue={editing.cost ?? ""} inputMode="decimal" /></label>
+            <label className="grid gap-1 text-sm">Local<input name="location" defaultValue={editing.location ?? ""} /></label>
+            <label className="grid gap-1 text-sm">Status<input name="status" defaultValue={editing.status ?? ""} /></label>
+            <label className="grid gap-1 text-sm">Compra<input name="purchased_at" type="date" defaultValue={editing.purchased_at ? String(editing.purchased_at).slice(0, 10) : ""} /></label>
+            <label className="grid gap-1 text-sm md:col-span-2">Observações<textarea name="notes" defaultValue={editing.notes ?? ""} rows={3} /></label>
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              <button type="submit">Salvar alterações</button>
+              <Link className="button secondary" href="/estoque#lista-estoque">Cancelar</Link>
+            </div>
+          </form>
+        </section>
+      ) : null}
+      <div id="lista-estoque" className="card scroll-mt-28 overflow-x-auto">
         <table>
           <thead>
             <tr>
@@ -97,23 +127,7 @@ export default async function EstoquePage({
                   )}
                 </td>
                 <td>
-                  <details>
-                    <summary className="cursor-pointer underline">Editar</summary>
-                    <form action={updateInventoryItem} className="mt-3 grid min-w-72 gap-2">
-                      <input type="hidden" name="id" value={item.id} />
-                      <label className="grid gap-1 text-sm">Marca<input name="brand" defaultValue={item.brand ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Modelo<input name="model" defaultValue={item.model} required /></label>
-                      <label className="grid gap-1 text-sm">Origem<input name="origin" defaultValue={item.origin ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Rastreio<input name="tracking_code" defaultValue={item.tracking_code ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Preço PIX<input name="sale_price" defaultValue={item.sale_price ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Custo<input name="cost" defaultValue={item.cost ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Local<input name="location" defaultValue={item.location ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Status<input name="status" defaultValue={item.status ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Compra<input name="purchased_at" type="date" defaultValue={item.purchased_at ? String(item.purchased_at).slice(0, 10) : ""} /></label>
-                      <label className="grid gap-1 text-sm">Observações<textarea name="notes" defaultValue={item.notes ?? ""} /></label>
-                      <button type="submit">Salvar</button>
-                    </form>
-                  </details>
+                  <Link className="underline" href={`/estoque?editar=${item.id}#editar-estoque`}>Editar</Link>
                 </td>
               </tr>
             ))}
