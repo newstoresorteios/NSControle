@@ -1,5 +1,12 @@
 # Execução local do guia de 16/10/2026
 
+## Incidente de produção e ajuste de estoque em 19/10/2026
+
+- As capturas atuais de `/pedidos` (digest `615434701`) e `/financeiro` (digest `3010968082`) reproduzem os erros dos Runtime Logs da Vercel fornecidos pelo usuário: PostgreSQL `42703`, respectivamente `column "supplier_name" does not exist` e `column "tax_identified_at" does not exist`. O aviso `contentscript.js` no console não explica essas exceções do servidor.
+- O usuário confirmou por consulta no SQL Editor que as cinco colunas e os dois índices da migração existem em `NS-db / main production`. Isso **não comprova** que a conexão `DATABASE_URL` (ou `POSTGRES_URL`) do deploy aponta para esse mesmo banco e esquema; os erros mostram que a conexão usada pelo deploy ainda não enxerga pelo menos duas colunas. O valor das variáveis no projeto Vercel está bloqueado para o usuário. A conexão Supabase disponível nesta sessão lista apenas o projeto `prompt-atlas`, sem acesso ao `NS-db`; a conexão Vercel disponível não autoriza o projeto `ns-controle`. Portanto, não foi possível confirmar o destino do deploy nem aplicar SQL nele. Nenhuma credencial foi lida ou exibida.
+- A edição de estoque foi recolocada logo abaixo da linha selecionada na tabela, em uma linha que ocupa as nove colunas. O formulário fica centralizado nessa largura, em vez de ocupar apenas a coluna Ficha ou aparecer acima da lista. O salvamento usa a ação existente `updateInventoryItem`.
+- Validação local dessa mudança: TypeScript, lint do arquivo, 50 testes aprovados (1 ignorado) e build de produção aprovados; o aviso preexistente de `<img>` em `logo.tsx` permanece. Não há teste integrado de edição/persistência no banco de produção nem confirmação de que `/pedidos` e `/financeiro` carregam no deploy. O bloqueio operacional é identificar a conexão de banco do projeto Vercel e conferir nela as colunas; qualquer migração deve ser direcionada ao banco confirmado.
+
 ## Preparação para publicação em 19/10/2026
 
 - O usuário identificou o banco como `NS-db / main production` e aplicou a migração incremental. A consulta de retorno mostrou as cinco colunas com os tipos previstos (`supplier_name`, `supplier_purchase_date`, `tax_identified_at`, `source`, `source_occurrence`) e os dois índices (`ctl_orders_tax_identified_idx`, `ctl_cancellations_source_occurrence_uidx`). A aplicação foi feita pelo usuário; esta revisão não executou SQL no banco.
