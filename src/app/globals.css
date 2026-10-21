@@ -1,12 +1,5 @@
 @import "tailwindcss";
 
-@media print {
-  body:has(.integration-label) { background: white; }
-  body:has(.integration-label) * { visibility: hidden; }
-  body:has(.integration-label) .integration-label, body:has(.integration-label) .integration-label * { visibility: visible; }
-  .integration-label { position: absolute; top: 0; left: 0; width: 90mm; }
-}
-
 :root {
   --ink: #16171c;
   --paper: #f4f4f4;

@@ -48,7 +48,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   const path = request.nextUrl.pathname;
-  const isPublic = path.startsWith("/login") || path.startsWith("/api/tray/sync");
+  const isPublic = path.startsWith("/login") || path.startsWith("/api/tray/sync") || path === '/integracao';
 
   if (!user && !isPublic) {
     const redirectUrl = request.nextUrl.clone();

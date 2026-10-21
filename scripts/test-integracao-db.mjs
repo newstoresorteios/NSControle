@@ -8,21 +8,27 @@ try {
   await sql.begin(async tx => {
     const [order] = await tx`insert into ctl_orders(order_key,flow,finance_month_key,commercial_status,data_source)
       values (${`test-${randomUUID()}`},'encomenda','0001-01-01','A ENVIAR','manual') returning id`;
-    const [inventory] = await tx`insert into ctl_inventory_items(model,origin,status) values ('Teste rollback','Redirect Europa','Disponível') returning id`;
+    const [inventory] = await tx`insert into ctl_integration_stock(model,origin,status) values ('Teste rollback','Redirect Europa','Disponível') returning id`;
     const [unit] = await tx`insert into ctl_integration_units(inventory_id,serial_number,weight_g,photo,photo_type,created_by)
       values (${inventory.id},${randomUUID()},700,${Buffer.from([255,216,255])},'image/jpeg','test') returning id`;
     const payload = {unit_id:unit.id,order_id:order.id,recipient:{name:'Teste'},customs_description:'Watch',declared_value:100,currency:'EUR',hs_code:'910211',origin_country:'CH',created_by:'test'};
     const [shipment] = await tx`insert into ctl_integration_shipments ${tx(payload)} returning id`;
-    await tx`update ctl_inventory_items set status='Reservado',order_id=${order.id} where id=${inventory.id}`;
+    await tx`update ctl_integration_stock set status='Reservado',order_id=${order.id} where id=${inventory.id}`;
     await assert.rejects(tx.savepoint(async sp=>{await sp`insert into ctl_integration_shipments ${sp(payload)}`;}),e=>e.code==='23505');
     await tx`update ctl_integration_shipments set status='cancelado' where id=${shipment.id}`;
-    await tx`update ctl_inventory_items set status='Disponível',order_id=null where id=${inventory.id}`;
+    await tx`update ctl_integration_stock set status='Disponível',order_id=null where id=${inventory.id}`;
     const [second] = await tx`insert into ctl_integration_shipments ${tx(payload)} returning id`;
     assert.notEqual(second.id,shipment.id);
-    const [check] = await tx`select status,order_id from ctl_inventory_items where id=${inventory.id}`;
+    const [check] = await tx`select status,order_id from ctl_integration_stock where id=${inventory.id}`;
     assert.equal(check.status,'Disponível'); assert.equal(check.order_id,null);
     const tables = await tx`select relname from pg_class where relname like 'ctl_integration_%' and relkind='r' and not relrowsecurity`;
     assert.equal(tables.length,0);
+    const partnerEmail=`test-${randomUUID()}@example.com`;
+    await tx`insert into ctl_integration_members(email,role) values (${partnerEmail},'redirect')`;
+    const [access]=await tx`select count(*)::int as total from ctl_allowed_emails where email=${partnerEmail}`;
+    assert.equal(access.total,0,'Equipe Europa não precisa de acesso ao NSControle');
+    const [internal]=await tx`select count(*)::int as total from ctl_inventory_items where id=${inventory.id}`;
+    assert.equal(internal.total,0,'Recebimento Europa não pode entrar no estoque interno');
     throw rollback;
   });
 } catch (error) { if (error !== rollback) throw error; }

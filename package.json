@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "dev:europa": "npm --prefix apps/integracao run dev",
+    "build:europa": "npm --prefix apps/integracao run build",
+    "start:europa": "npm --prefix apps/integracao run start",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

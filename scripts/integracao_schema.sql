@@ -1,4 +1,4 @@
--- Neon: additive module schema. Existing inventory remains the source of physical units.
+-- Initial schema; setup-integracao.mjs then applies the separate platform schema.
 begin;
 create table if not exists ctl_integration_members (
   email text primary key references ctl_allowed_emails(email),

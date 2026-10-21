@@ -1,39 +1,32 @@
 # NS Controle
 
-## Integração New Store × Redirect (`/integracao`)
+## Plataforma Europa separada
 
-Módulo de recebimento com foto privada (JPEG/PNG/WebP, até 4 MB), ID sequencial,
-série, peso e etiqueta interna. Usa `ctl_inventory_items` como estoque físico e
-`ctl_orders` como origem dos pedidos. Reservas, conferência da série, embalagem,
-cancelamento e envio são transacionais e registram responsável e histórico.
+A operação Redirect foi extraída para uma aplicação independente em
+[apps/integracao](apps/integracao/README.md), com login, sessão, navegação, estoque
+operacional e publicação próprios. Ela não aparece no menu do NSControle.
 
-Instalação do schema aditivo no banco Neon (Supabase continua responsável pelo login):
+No NSControle, a ficha do pedido oferece **Encaminhar pedido para a Europa /
+acompanhar envio**. Apenas essa ponte acessa o estoque Europa para selecionar a
+unidade. A plataforma da Ana recebe somente os envios atribuídos e devolve o rastreio.
+O estoque Europa não é adicionado ao estoque interno do NSControle.
+
+Instale o esquema aditivo antes de publicar:
 
 ```bash
 node --env-file=.env.local scripts/setup-integracao.mjs
 node --env-file=.env.local scripts/test-integracao-db.mjs
 ```
 
-Aplique o schema antes de publicar esta versão. Novas sincronizações Tray armazenam
-o destinatário; pedidos antigos podem usar **Buscar endereço na Tray**. Confira os
-campos importados antes de liberar o pedido. Nesta fase, apenas pedidos `A ENVIAR`
-ou `A ENVIAR VINDI`, sem entrega nem rastreio, são elegíveis. Há um envio por pedido.
-Envios parciais e múltiplas unidades por remessa ficam para a próxima etapa.
+Use projetos de hospedagem separados: raiz deste repositório para NSControle e
+`apps/integracao` para Europa. Configure `INTEGRACAO_URL` no NSControle quando a URL
+da nova aplicação estiver disponível. O antigo endereço `/integracao` do NSControle
+apenas direciona à plataforma separada, sem abrir o painel interno.
 
-Usuários internos autorizados continuam com acesso ao controle completo. Para dar
-acesso restrito à Redirect, crie o usuário no Auth, autorize o email em
-`ctl_allowed_emails` e cadastre o mesmo email, em minúsculas, em
-`ctl_integration_members` com `role = 'redirect'`. Não cadastre um parceiro apenas
-na lista geral: usuários sem o vínculo de parceiro são considerados equipe interna.
-O perfil Redirect só acessa a integração, estoque Europa e destinatários dos envios
-atribuídos; não pode selecionar pedidos, cancelar reservas ou acessar financeiro.
-Nenhum usuário externo é criado automaticamente.
-
-As fotos ficam no banco nesta primeira versão e são servidas por rota autenticada,
-sem URL pública. Considere armazenamento de objetos privado conforme o volume.
-Etiquetas de transporte ainda são emitidas no sistema atual. O registro de envio
-atualiza o rastreio no NSControle; emissão Sendcloud, retorno automático de rastreio
-à Tray, compras e cobrança de serviços ainda não estão implementados.
+O banco PostgreSQL é compartilhado apenas como backend da ponte operacional nesta
+fase; as sessões e autorizações são independentes. A equipe da Ana entra em
+`ctl_integration_members`, sem precisar de acesso a `ctl_allowed_emails`.
+Sendcloud e retorno automático do rastreio à Tray continuam para uma etapa posterior.
 
 Painel interno de pedidos, financeiro, estoque, compras de clientes e cancelamentos.
 

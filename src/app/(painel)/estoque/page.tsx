@@ -31,6 +31,7 @@ export default async function EstoquePage({
   >`
     select id, brand, model, origin, tracking_code, sale_price, sale_price_note, cost, location, status, notes, purchased_at, order_id
     from ctl_inventory_items
+    where not exists (select 1 from ctl_integration_units eu where eu.inventory_id = ctl_inventory_items.id)
     order by brand, model
   `;
   const priced = items.map((item) => asNumber(item.sale_price)).filter((value): value is number => value != null);

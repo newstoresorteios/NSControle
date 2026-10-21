@@ -4,6 +4,7 @@ import { Logo } from "@/components/logo";
 const MESSAGES: Record<string, string> = {
   credencial: "E-mail ou senha não conferem.",
   acesso: "Esse usuário não está liberado no time do controle.",
+  plataforma: "Seu acesso é à plataforma Europa. Utilize o endereço próprio da plataforma.",
 };
 
 export default async function LoginPage({
