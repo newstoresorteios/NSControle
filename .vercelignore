@@ -1,0 +1,11 @@
+.git
+.local
+data
+.env*
+**/.env*
+node_modules
+**/node_modules
+.next
+**/.next
+*.tsbuildinfo
+**/*.tsbuildinfo
