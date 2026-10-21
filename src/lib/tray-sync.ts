@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { TrayRequestError, trayConfigured, trayGet } from "@/lib/tray-client";
+import { trayRecipient } from "@/lib/integracao";
 import {
   addIsoDays,
   buildTrayDraft,
@@ -234,6 +235,12 @@ async function pullOne(key: string, listedModified: unknown) {
   if (!draft.tray_modified_at) draft.tray_modified_at = trayTimeIso(listedModified);
   const existing = await findOrder(key);
   const orderId = await writeOrder(existing, draft);
+  if (orderId) {
+    const sql = db();
+    await sql`insert into ctl_integration_order_data (order_id, recipient)
+      values (${orderId}, ${sql.json(trayRecipient(complete))})
+      on conflict (order_id) do update set recipient = excluded.recipient, updated_at = now()`;
+  }
   const cancellation = await writeCancellation(draft, orderId);
   if (draft.tracking_code && orderId) {
     await db()`

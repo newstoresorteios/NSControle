@@ -39,6 +39,7 @@ export default async function PedidoPage({
           Voltar aos pedidos
         </Link>
         <h1 className="page-title mt-2">{order.label || order.order_key}</h1>
+        <Link className="underline text-sm" href={`/integracao?pedido=${order.id}`}>Selecionar unidade e envio na integração</Link>
         <p className="num text-muted">Ganho calculado: {brl(order.gain_amount)}</p>
       </div>
       {query.ok ? <p className="text-sm text-ok">Ficha atualizada.</p> : null}

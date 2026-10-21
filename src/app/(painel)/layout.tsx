@@ -10,7 +10,7 @@ import { requireTeam } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
-  const { email } = await requireTeam();
+  const { email, role } = await requireTeam(true);
   return (
     <div className="min-h-screen bg-paper text-ink">
       <div className="sticky top-0 z-20">
@@ -23,7 +23,7 @@ export default async function PainelLayout({ children }: { children: React.React
               <Logo height={24} />
             </Link>
             <div className="hidden min-w-0 flex-1 lg:block">
-              <Nav />
+              <Nav partner={role === 'redirect'} />
             </div>
             <form action={signOut} className="ml-auto flex items-center gap-3">
               <span className="hidden max-w-52 truncate text-xs tracking-wide text-muted sm:inline">{email}</span>
@@ -35,7 +35,7 @@ export default async function PainelLayout({ children }: { children: React.React
           <div className="relative border-t border-line lg:hidden">
             <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-white to-transparent" />
             <div className="mx-auto max-w-[1600px] px-4 sm:px-5">
-              <Nav scroll />
+              <Nav scroll partner={role === 'redirect'} />
             </div>
           </div>
         </header>
@@ -43,7 +43,7 @@ export default async function PainelLayout({ children }: { children: React.React
           <NavigationProgress />
         </Suspense>
       </div>
-      <AutoRefresh />
+      {role !== 'redirect' ? <AutoRefresh /> : null}
       <main className="mx-auto max-w-[1600px] px-5 py-8">{children}</main>
     </div>
   );

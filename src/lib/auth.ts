@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { USER_EMAIL_HEADER, USER_ID_HEADER, requestUser } from "@/lib/request-user";
 import { createClient } from "@/lib/supabase/server";
 
-export const requireTeam = cache(async function requireTeam() {
+export const requireTeam = cache(async function requireTeam(integrationAccess = false) {
   const headerStore = await headers();
   const forwarded = requestUser(headerStore.get(USER_ID_HEADER), headerStore.get(USER_EMAIL_HEADER));
   let userId = forwarded?.id ?? "";
@@ -41,5 +41,9 @@ export const requireTeam = cache(async function requireTeam() {
     `;
   }
 
-  return { email: members[0]?.email ?? email };
+  const memberEmail = members[0]?.email ?? email;
+  const partners = await sql`select role from ctl_integration_members where email = ${memberEmail}`;
+  const role = partners.length ? 'redirect' : 'newstore';
+  if (role === 'redirect' && !integrationAccess) redirect('/integracao');
+  return { email: memberEmail, role };
 });

@@ -9,12 +9,13 @@ const LINKS = [
   { href: "/financeiro", label: "Financeiro" },
   { href: "/pagamentos", label: "Pagamentos" },
   { href: "/estoque", label: "Estoque" },
+  { href: "/integracao", label: "Integração" },
   { href: "/compras", label: "Compras" },
   { href: "/cancelamentos", label: "Cancelamentos" },
   { href: "/calculadora", label: "Calculadora" },
 ];
 
-export function Nav({ scroll = false }: { scroll?: boolean }) {
+export function Nav({ scroll = false, partner = false }: { scroll?: boolean; partner?: boolean }) {
   const pathname = usePathname();
   return (
     <nav
@@ -24,7 +25,7 @@ export function Nav({ scroll = false }: { scroll?: boolean }) {
           : "flex flex-wrap items-center justify-center gap-x-5 gap-y-2"
       }
     >
-      {LINKS.map((link) => {
+      {LINKS.filter(link => !partner || link.href === '/integracao').map((link) => {
         const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
         return (
           <Link
