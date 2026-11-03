@@ -44,11 +44,45 @@ MONTHS = {
     "novembro": 11,
     "dezembro": 12,
 }
-SHEET_MONTH = {
-    "Financeiro 0826": "2026-08-01",
-    "Financeiro 0926": "2026-09-01",
-    "Financeiro 1026": "2026-10-01",
-}
+FINANCE_SHEET_RE = re.compile(r"^Financeiro\s+(\d{2})(\d{2})$", re.I)
+NOTAS_PREFIX = "notas de intermedia"
+
+
+def parse_finance_sheet_month(name: str):
+    """Map 'Financeiro MMYY' → '20YY-MM-01'. Returns None if the name does not match."""
+    match = FINANCE_SHEET_RE.match((name or "").strip())
+    if not match:
+        return None
+    month = int(match.group(1))
+    year = int(match.group(2))
+    if month < 1 or month > 12:
+        return None
+    return f"20{year:02d}-{month:02d}-01"
+
+
+def list_finance_month_sheets(workbook):
+    found = []
+    for name in workbook.sheetnames:
+        month = parse_finance_sheet_month(name)
+        if month:
+            found.append((name, month))
+    return found
+
+
+def notas_sheet_rank(name: str) -> int:
+    match = re.search(r"(\d+)\s*$", name.strip())
+    return int(match.group(1)) if match else 0
+
+
+def list_notas_sheets(workbook):
+    """All notas abas, newest month number first so older sheets do not overwrite."""
+    ranked = [
+        (notas_sheet_rank(name), name)
+        for name in workbook.sheetnames
+        if fold(name).startswith(NOTAS_PREFIX)
+    ]
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return [name for _rank, name in ranked]
 
 
 def fold(value: str) -> str:
@@ -282,7 +316,25 @@ class Importer:
             "conflitos_amostra": [],
             "metas": {},
             "meses": {},
+            "abas": {},
+            "avisos": [],
+            "notas_abas": [],
+            "notas_preenchimentos": {
+                "purchase_amount": 0,
+                "payment_fee": 0,
+                "shipping_cost": 0,
+                "pedidos_tocados": 0,
+            },
+            "financeiro_abas": [],
+            "pronta_entrega": 0,
+            "sem_compra": 0,
+            "sem_taxa_pgto": 0,
+            "sem_frete": 0,
+            "sem_compra_amostra": [],
         }
+        self._sheet_counts = Counter()
+        self._pedidos_keys = set()
+        self._entregues_keys = set()
 
     def identity(self, order):
         return (order["order_key"], order["flow"], order["finance_month_key"])
@@ -413,24 +465,45 @@ class Importer:
             self.conflict(month, "meta", previous, amount, source)
         self.goals[month] = amount
 
+    def _apply_finance_section(self, marker: str, flow: str):
+        """Return (flow, tax_mode, section_origin) for a section header."""
+        section = fold(marker or "")
+        if section == "taxas":
+            return flow, True, None
+        if section == "pronta entrega":
+            return "loja_nova", False, "Pronta Entrega"
+        if section == "loja nova":
+            return "loja_nova", False, "Loja nova"
+        if section in {"nscreditos", "ns creditos"}:
+            return "ns_creditos", False, None
+        return flow, False, None
+
     def consume_finance(self, rows, month, priority, source):
         flow = "encomenda"
         tax_mode = False
+        section_origin = None
+        section_markers = {
+            "loja nova",
+            "nscreditos",
+            "ns creditos",
+            "taxas",
+            "pronta entrega",
+        }
         for row in rows:
             reference = clean_text(cell(row, 2))
             section = fold(reference or "")
             order_cell = cell(row, 1)
-            key, label = parse_key(order_cell)
-            if not key and section in {"loja nova", "nscreditos", "ns creditos", "taxas"}:
-                if section == "taxas":
-                    tax_mode = True
-                elif section == "loja nova":
-                    flow = "loja_nova"
-                    tax_mode = False
-                else:
-                    flow = "ns_creditos"
-                    tax_mode = False
+            order_text = clean_text(order_cell)
+            order_fold = fold(order_text or "")
+            # Section headers may sit in col B (Pronta Entrega) or col C (TAXAS / Loja nova).
+            # parse_key("Pronta Entrega") yields label:pronta-entrega — treat markers first.
+            if order_fold in section_markers:
+                flow, tax_mode, section_origin = self._apply_finance_section(order_text, flow)
                 continue
+            if section in section_markers:
+                flow, tax_mode, section_origin = self._apply_finance_section(reference, flow)
+                continue
+            key, label = parse_key(order_cell)
             if not key:
                 status = clean_text(cell(row, 3))
                 if status and fold(status) in {"comprado", "taxado", "vendido", "enviado"}:
@@ -445,6 +518,7 @@ class Importer:
                         )
                 continue
             self.report["linhas_lidas"] += 1
+            self._sheet_counts[source] += 1
             status = clean_text(cell(row, 3))
             sale = parse_money(cell(row, 4))
             purchase = parse_money(cell(row, 5))
@@ -475,6 +549,10 @@ class Importer:
             order["payment_fee"] = payment_fee
             order["shipping_cost"] = shipping
             order["import_tax"] = import_tax
+            if section_origin and not order.get("origin"):
+                order["origin"] = section_origin
+            if section_origin == "Pronta Entrega":
+                self.report["pronta_entrega"] += 1
             if import_tax is not None:
                 order["tax_paid"] = True
             if status and fold(status) == "comprado":
@@ -524,12 +602,21 @@ class Importer:
         return order
 
     def read_finance(self, workbook):
-        year = workbook["Financeiro 2026"]
-        rows = [list(row) for row in year.iter_rows(values_only=True)]
-        for month, block in split_blocks(rows):
-            self.set_goal(month, find_meta(block), "Financeiro 2026")
-            self.consume_finance(block, month, 1, "Financeiro 2026")
-        for name, month in SHEET_MONTH.items():
+        if "Financeiro 2026" in workbook.sheetnames:
+            year = workbook["Financeiro 2026"]
+            rows = [list(row) for row in year.iter_rows(values_only=True)]
+            for month, block in split_blocks(rows):
+                self.set_goal(month, find_meta(block), "Financeiro 2026")
+                self.consume_finance(block, month, 1, "Financeiro 2026")
+        month_sheets = list_finance_month_sheets(workbook)
+        self.report["financeiro_abas"] = [
+            {"aba": name, "mes": month} for name, month in month_sheets
+        ]
+        if not month_sheets:
+            self.report["avisos"].append(
+                "nenhuma aba Financeiro MMYY encontrada; só Financeiro 2026 (se houver) foi lida"
+            )
+        for name, month in month_sheets:
             sheet = workbook[name]
             block = [list(row) for row in sheet.iter_rows(values_only=True)]
             self.set_goal(month, find_meta(block), name)
@@ -541,6 +628,8 @@ class Importer:
         rows = list(workbook["Entregues"].iter_rows(values_only=True))
         for row in rows[1:]:
             key, label = parse_key(cell(row, 0))
+            if key:
+                self._entregues_keys.add(key)
             tracking = clean_text(cell(row, 4))
             shipment = clean_text(cell(row, 3))
             if shipment and TRACKING_RE.match(shipment) and not tracking:
@@ -559,11 +648,14 @@ class Importer:
                     "product_name": hint_from_label(label, key) if key else None,
                 },
             )
+        self._sheet_counts["Entregues"] = max(0, len(rows) - 1)
 
     def read_pedidos(self, workbook):
         rows = list(workbook["Pedidos"].iter_rows(values_only=True))
         for row in rows[1:]:
             key, label = parse_key(cell(row, 0))
+            if key:
+                self._pedidos_keys.add(key)
             product = clean_text(cell(row, 4))
             tracking = product if product and TRACKING_RE.match(product) else None
             self.patch(
@@ -582,6 +674,7 @@ class Importer:
                     "notes_human": clean_text(cell(row, 9)),
                 },
             )
+        self._sheet_counts["Pedidos"] = max(0, len(rows) - 1)
 
     def read_acompanhamentos(self, workbook):
         rows = list(workbook["Acompanhamentos"].iter_rows(values_only=True))
@@ -638,8 +731,31 @@ class Importer:
             )
 
     def read_notas(self, workbook):
-        name = next(sheet for sheet in workbook.sheetnames if sheet.lower().startswith("notas de intermedia"))
-        rows = list(workbook[name].iter_rows(values_only=True))
+        sheets = list_notas_sheets(workbook)
+        if not sheets:
+            self.report["avisos"].append("nenhuma aba 'notas de intermediação*' encontrada")
+            return
+        self.report["notas_abas"] = [
+            {"aba": name, "rank": notas_sheet_rank(name), "ordem_leitura": index + 1}
+            for index, name in enumerate(sheets)
+        ]
+        # Warn when workbook order would have preferred an older sheet under the old importer.
+        first_in_workbook = next(
+            (name for name in workbook.sheetnames if fold(name).startswith(NOTAS_PREFIX)),
+            None,
+        )
+        if first_in_workbook and first_in_workbook != sheets[0]:
+            self.report["avisos"].append(
+                f"ordem das abas notas: workbook começa em '{first_in_workbook}', "
+                f"import prioriza '{sheets[0]}' (mês mais recente); todas as abas são lidas"
+            )
+        for name in sheets:
+            self._consume_notas_sheet(workbook[name], name)
+
+    def _consume_notas_sheet(self, sheet, source: str):
+        rows = list(sheet.iter_rows(values_only=True))
+        touched = 0
+        filled = Counter()
         for row in rows[1:]:
             key, label = parse_key(cell(row, 0))
             if not key:
@@ -648,6 +764,7 @@ class Importer:
                 continue
             self.report["linhas_lidas"] += 1
             order = self.pick(key, create=True)
+            touched += 1
             if label and not order.get("label"):
                 order["label"] = label
             purchased = parse_bool(cell(row, 2))
@@ -658,6 +775,7 @@ class Importer:
             tracking = clean_text(cell(row, 3))
             if tracking and not order.get("tracking_code"):
                 order["tracking_code"] = tracking
+            # Only fill empty money fields — never overwrite Financeiro / prior notas / Tray values.
             for field, index in (
                 ("purchase_amount", 4),
                 ("payment_fee", 5),
@@ -666,6 +784,15 @@ class Importer:
                 amount = parse_money(cell(row, index))
                 if amount is not None and order.get(field) is None:
                     order[field] = amount
+                    filled[field] += 1
+                    self.report["notas_preenchimentos"][field] += 1
+        self.report["notas_preenchimentos"]["pedidos_tocados"] += touched
+        self._sheet_counts[source] = max(0, len(rows) - 1)
+        for entry in self.report["notas_abas"]:
+            if entry["aba"] == source:
+                entry["linhas"] = max(0, len(rows) - 1)
+                entry["preenchimentos"] = dict(filled)
+                break
 
     def find_order_id(self, key):
         if not key:
@@ -766,14 +893,33 @@ class Importer:
                 inventory_by_code[item["code"]] = item["id"]
 
     def finalize(self):
+        sem_compra_amostra = []
         for order in self.orders.values():
             if order["delivered"] and not order.get("commercial_status"):
                 order["commercial_status"] = "ENTREGUE"
+            if order.get("sale_amount") is not None and order.get("purchase_amount") is None:
+                self.report["sem_compra"] += 1
+                if len(sem_compra_amostra) < 12:
+                    sem_compra_amostra.append(
+                        {
+                            "pedido": order["order_key"],
+                            "fluxo": order["flow"],
+                            "mes": order.get("finance_month"),
+                            "venda": order.get("sale_amount"),
+                        }
+                    )
+            if order.get("sale_amount") is not None and order.get("payment_fee") is None:
+                self.report["sem_taxa_pgto"] += 1
+            if order.get("sale_amount") is not None and order.get("shipping_cost") is None:
+                self.report["sem_frete"] += 1
             order.pop("priority", None)
         flows = Counter(order["flow"] for order in self.orders.values())
         months = Counter(
             order["finance_month"] or "sem_mes" for order in self.orders.values()
         )
+        moved = sorted(self._pedidos_keys & self._entregues_keys)
+        only_pedidos = sorted(self._pedidos_keys - self._entregues_keys)
+        only_entregues = sorted(self._entregues_keys - self._pedidos_keys)
         self.report["pedidos_unicos"] = len(self.orders)
         self.report["por_fluxo"] = dict(flows)
         self.report["meses"] = dict(months)
@@ -781,6 +927,16 @@ class Importer:
         self.report["estoque"] = len(self.inventory)
         self.report["compras_clientes"] = len(self.trade_ins)
         self.report["cancelamentos"] = len(self.cancellations)
+        self.report["abas"] = dict(self._sheet_counts)
+        self.report["sem_compra_amostra"] = sem_compra_amostra
+        self.report["pipeline"] = {
+            "pedidos": len(self._pedidos_keys),
+            "entregues": len(self._entregues_keys),
+            "em_ambos": len(moved),
+            "so_pedidos": len(only_pedidos),
+            "so_entregues": len(only_entregues),
+            "em_ambos_amostra": moved[:12],
+        }
 
     def payload(self):
         return {
@@ -797,18 +953,21 @@ class Importer:
 
 def build(path: Path):
     workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    importer = Importer()
-    importer.read_finance(workbook)
-    importer.read_entregues(workbook)
-    importer.read_pedidos(workbook)
-    importer.read_acompanhamentos(workbook)
-    importer.read_rastreamento(workbook)
-    importer.read_notas(workbook)
-    importer.read_cancelamentos(workbook)
-    importer.read_estoque(workbook)
-    importer.read_trade_ins(workbook)
-    importer.finalize()
-    return importer.payload(), importer.report
+    try:
+        importer = Importer()
+        importer.read_finance(workbook)
+        importer.read_entregues(workbook)
+        importer.read_pedidos(workbook)
+        importer.read_acompanhamentos(workbook)
+        importer.read_rastreamento(workbook)
+        importer.read_notas(workbook)
+        importer.read_cancelamentos(workbook)
+        importer.read_estoque(workbook)
+        importer.read_trade_ins(workbook)
+        importer.finalize()
+        return importer.payload(), importer.report
+    finally:
+        workbook.close()
 
 
 def chunks(items, size):

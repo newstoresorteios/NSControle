@@ -67,6 +67,28 @@ python scripts/import_pedidos.py
 
 A importação grava `data/import_report.json` e, com as variáveis do `.env.local`, substitui os dados do controle.
 
+### Mapeamento aba → tabelas
+
+| Aba | Destino | Observação |
+|---|---|---|
+| `Financeiro MMYY` (ex. `1026`) | `ctl_orders`, `ctl_monthly_goals` | Mês detectado pelo nome; prioridade maior que `Financeiro 2026` |
+| `Financeiro 2026` | idem | Blocos mensais por “Controle Financeiro de …” |
+| `Pedidos` / `Entregues` / `Acompanhamentos` / `Rastreamento` | `ctl_orders` | Pipeline operacional |
+| `notas de intermediação*` | `ctl_orders` | **Todas** as abas; mês mais alto primeiro; só preenche custo/taxa/frete vazios |
+| `Cancelamentos` | `ctl_cancellations` | |
+| `Estoque` | `ctl_inventory_items` | |
+| `Relógios comprados…` | `ctl_trade_ins` | |
+| `Endereços`, `Calculos`, `Logins e Links` | — | Não importadas |
+
+Seção **Pronta Entrega** no Financeiro grava fluxo `loja_nova` com origem `Pronta Entrega`. O relatório marca pedidos sem compra/taxa/frete (`sem_compra`, `sem_taxa_pgto`, `sem_frete`) sem gravar médias no banco.
+
+Checklist das fórmulas do Excel e diff entre planilhas: [`docs/planilha-checklist.md`](docs/planilha-checklist.md).
+
+```bash
+python scripts/test_import_pedidos.py
+python scripts/diff_xlsx.py "caminho/antiga.xlsx" "caminho/nova.xlsx"
+```
+
 ## Loja (TRAYadaptor)
 
 Com `TRAY_ADAPTER_URL` e `TRAY_ADAPTER_TOKEN` (o mesmo Bearer interno do adaptador), o painel puxa pedidos da loja ao ser aberto e pelo botão **Atualizar agora**. Cada rodada grava até 15 pedidos em `ctl_orders` no fluxo Loja nova: status, produto, venda, pagamento, rastreio, cancelamento e o frete da loja em `shipping_cost`. Custo de compra, taxa de importação, estoque físico e compras de clientes não vêm da Tray. Um custo de envio já preenchido na planilha ou na ficha manual permanece.

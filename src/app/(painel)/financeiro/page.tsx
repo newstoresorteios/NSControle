@@ -3,6 +3,7 @@ import { saveGoal } from "@/app/(painel)/financeiro/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { monthSummary } from "@/lib/finance";
+import { estimateLucroReal } from "@/lib/finance-lucro-real";
 import { refundTotal } from "@/lib/refunds";
 import { TaxQueue } from "./tax-queue";
 import { FLOW_LABEL, asNumber, brl, monthLabel, percent } from "@/lib/format";
@@ -56,13 +57,22 @@ function GapCard({ href, label, count, active }: { href: string; label: string; 
 export default async function FinanceiroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; erro?: string; falta?: string; aba?: string; status?: string; ok?: string }>;
+  searchParams: Promise<{
+    month?: string;
+    erro?: string;
+    falta?: string;
+    aba?: string;
+    status?: string;
+    ok?: string;
+    icms?: string;
+  }>;
 }) {
   const params = await searchParams;
   await requireTeam();
   if (params.aba === "taxas") {
     return <TaxQueue status={params.status} error={params.erro} ok={params.ok} />;
   }
+  const icmsCreditFactor = params.icms === "70" ? 0.7 : 1;
   const sql = db();
   const [goals, monthRows, refundMonths] = await Promise.all([
     sql<{ month: string; target_amount: string }[]>`
@@ -126,6 +136,7 @@ export default async function FinanceiroPage({
     where done_date >= ${monthDate} and done_date < ${monthEnd}
   `]);
   const summary = monthSummary(orders ?? [], asNumber(goal?.target_amount), selected);
+  const lucroReal = estimateLucroReal(orders ?? [], { icmsCreditFactor });
   const falta = gapOf(params.falta);
   const incomplete = (orders ?? []).filter((order) => {
     const gaps = missingGaps(order);
@@ -308,6 +319,84 @@ export default async function FinanceiroPage({
         ) : null}
         {importTaxesWithoutAmount ? <p className="mt-2 text-sm text-danger">Há {pedidos(importTaxesWithoutAmount)} com taxação identificada e valor ainda não informado.</p> : null}
         {negativeCosts ? <p className="mt-2 text-sm text-danger">Há {pedidos(negativeCosts)} com custo negativo registrado. Confira a origem e o sinal antes de validar este resultado.</p> : null}
+      </section>
+
+      <section className="card overflow-x-auto">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="section-title">Lucro Real estimado (RJ)</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted">
+              Estimativa gerencial: compra faltante ≈ 54,34% da venda; taxa de pgto e frete vazios usam médias das
+              notas (R$&nbsp;233,47 / R$&nbsp;177). PIS/COFINS 9,25% com crédito sobre CMV; ICMS RJ 20%; IRPJ + CSLL
+              sobre a base. Não é apuração contábil.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              className={`button ${icmsCreditFactor === 1 ? "" : "secondary"}`}
+              href={`/financeiro?month=${selected}&icms=100`}
+            >
+              ICMS crédito 100%
+            </Link>
+            <Link
+              className={`button ${icmsCreditFactor === 0.7 ? "" : "secondary"}`}
+              href={`/financeiro?month=${selected}&icms=70`}
+            >
+              ICMS crédito 70%
+            </Link>
+          </div>
+        </div>
+        <section className="mt-4 grid gap-3 sm:grid-cols-3">
+          <article className="card stat">
+            <p className="kicker">Lucro operacional</p>
+            <p className={`num mt-2 text-3xl font-medium tracking-tight ${lucroReal.lucroOperacional < 0 ? "text-danger" : ""}`}>
+              {brl(lucroReal.lucroOperacional)}
+            </p>
+            <p className="mt-1 text-sm text-muted">Margem {percent(lucroReal.margemOperacional)}</p>
+          </article>
+          <article className="card stat">
+            <p className="kicker">Carga tributária</p>
+            <p className="num mt-2 text-3xl font-medium tracking-tight text-danger">{brl(lucroReal.cargaTributaria)}</p>
+            <p className="mt-1 text-sm text-muted">{percent(lucroReal.cargaTributariaPct)} da venda</p>
+          </article>
+          <article className="card stat">
+            <p className="kicker">Lucro líquido</p>
+            <p className={`num mt-2 text-3xl font-medium tracking-tight ${lucroReal.lucroLiquido < 0 ? "text-danger" : "text-ok"}`}>
+              {brl(lucroReal.lucroLiquido)}
+            </p>
+            <p className="mt-1 text-sm text-muted">Margem {percent(lucroReal.margemLiquida)}</p>
+          </article>
+        </section>
+        <table className="mt-4">
+          <thead>
+            <tr>
+              <th>Vendas</th>
+              <th>CMV (real + estimado)</th>
+              <th>Taxa pgto</th>
+              <th>Frete</th>
+              <th>Importação</th>
+              <th>PIS/COFINS líq.</th>
+              <th>ICMS líq.</th>
+              <th>IRPJ+CSLL</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="num">{brl(lucroReal.vendas)}</td>
+              <td className="num text-danger">{brl(-lucroReal.compraTotal)}</td>
+              <td className="num text-danger">{brl(-lucroReal.taxaPgtoTotal)}</td>
+              <td className="num text-danger">{brl(-lucroReal.freteTotal)}</td>
+              <td className="num text-danger">{brl(-lucroReal.taxaImportacao)}</td>
+              <td className="num text-danger">{brl(-lucroReal.pisCofinsLiquido)}</td>
+              <td className="num text-danger">{brl(-lucroReal.icmsLiquido)}</td>
+              <td className="num text-danger">{brl(-lucroReal.irpjCsllTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="mt-3 text-sm text-muted">
+          Compra estimada em {pedidos(lucroReal.pedidosSemCompra)}: {brl(lucroReal.compraEstimada)}. Crédito ICMS
+          aplicado: {Math.round(lucroReal.icmsCreditFactor * 100)}% do ideal sobre o CMV.
+        </p>
       </section>
 
       <section className="card">
