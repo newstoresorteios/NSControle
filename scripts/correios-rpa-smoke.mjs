@@ -2,6 +2,11 @@
  * One-shot smoke: Portal Importador → tracking → boleto → Neon upsert.
  * Usage: node --env-file=.env.local scripts/correios-rpa-smoke.mjs [TRACKING]
  * Never logs CORREIOS_PASSWORD. Does not set tax_paid=true on boleto generation.
+ *
+ * Branching (Paulo):
+ *   Path A — first issue: search → $ → ciência → Concluir → Boleto → pagfacil → Copiar
+ *   Path B — re-entry:    search → sandwich → modal Pagar → Boleto → pagfacil → Copiar
+ * Detection: try A first; if "Pagamento em Processamento" or empty barcode → B.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -117,6 +122,21 @@ async function shot(page, name) {
   await page.screenshot({ path, fullPage: true });
   console.log("screenshot:", path);
   return path;
+}
+
+async function gotoRetry(page, url, attempts = 4) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.log(`goto retry ${i}/${attempts}:`, err instanceof Error ? err.message.slice(0, 120) : err);
+      await page.waitForTimeout(2000 * i);
+    }
+  }
+  throw lastErr;
 }
 
 async function upsertDb(env, payload) {
@@ -282,7 +302,7 @@ async function main() {
     const loginUrl =
       "https://cas.correios.com.br/login?service=" +
       encodeURIComponent(SEARCH_URL);
-    await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await gotoRetry(page, loginUrl);
     await shot(page, "01-login.png");
 
     // Fill username/password — Correios CAS fields vary
@@ -340,9 +360,9 @@ async function main() {
       throw new Error(result.error);
     }
 
-    // Ensure on search page
-    if (!page.url().includes("pesquisarRemessaImportador")) {
-      await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+    // Ensure on search page (Correios sometimes resets the connection)
+    if (!page.url().includes("pesquisarRemessaImportador") || /ERR_|não é possível acessar/i.test(await page.locator("body").innerText().catch(() => ""))) {
+      await gotoRetry(page, SEARCH_URL);
       await page.waitForTimeout(1500);
     }
 
@@ -422,186 +442,210 @@ async function main() {
 
     result.paymentStatus = "awaiting_payment";
 
-    // Click $ payment icon inside the result row for this tracking (avoid dialog chrome)
+    // Ação icons: [0]=hamburger/sandwich, [1]=eye, [2]=$
+    // Path A (first issue): $ → ciência → Concluir → Boleto → pagfacil → Copiar
+    // Path B (already issued): sandwich → modal Pagar → Boleto → pagfacil → Copiar
+    // Detection: try A first; on "Pagamento em Processamento" / empty barcode → B
     const row = page.locator("table tbody tr, tr").filter({ hasText: TRACKING }).first();
     if (!(await row.count())) throw new Error("result row not found for tracking");
     await row.scrollIntoViewIfNeeded().catch(() => {});
 
-    let clickedPay = false;
-    const payInRow = row.locator(
-      'a[title*="pagament" i], a[aria-label*="pagament" i], a[title*="$"], button[title*="pagament" i], img[title*="pagament" i], img[alt*="pagament" i], a[onclick*="pagament" i]',
-    );
-    if (await payInRow.count()) {
-      await payInRow.first().click({ force: true });
-      clickedPay = true;
+    async function refreshActionClickables() {
+      const cell = row.locator("td").first();
+      return cell.locator("a:visible, button:visible, span.ui-button:visible");
     }
-    if (!clickedPay) {
-      // PrimeFaces command links in Ação: usually menu, eye, $ — pick last clickable in first cell
-      const actionCell = row.locator("td").first();
-      const clickables = actionCell.locator("a:visible, button:visible, span.ui-button:visible");
-      const lc = await clickables.count();
-      console.log("action_clickables:", lc);
-      for (let i = 0; i < lc; i++) {
-        const el = clickables.nth(i);
-        const meta =
-          ((await el.getAttribute("title")) || "") +
-          ((await el.getAttribute("aria-label")) || "") +
-          ((await el.innerText().catch(() => "")) || "");
-        if (/\$|pagament|boleto|pagar/i.test(meta)) {
-          await el.click({ force: true });
-          clickedPay = true;
-          break;
-        }
-      }
-      if (!clickedPay && lc >= 3) {
-        await clickables.nth(2).click({ force: true });
-        clickedPay = true;
-      } else if (!clickedPay && lc >= 1) {
-        await clickables.nth(lc - 1).click({ force: true });
-        clickedPay = true;
-      }
-    }
-    if (!clickedPay) throw new Error("payment ($) action not found in row");
 
+    async function clickSandwichThenPagar(shotName = "05b-modal-sandwich.png") {
+      const icons = await refreshActionClickables();
+      const n = await icons.count();
+      console.log("path_B sandwich icons:", n);
+      if (n < 1) throw new Error("no action icons for sandwich");
+      await icons.nth(0).click({ force: true }); // hamburger — NOT $
+      await page.waitForTimeout(1500);
+      await shot(page, shotName);
+      const dialogPagar = page.locator(".ui-dialog:visible").getByRole("button", { name: /^Pagar$/i })
+        .or(page.locator('.ui-dialog:visible button:has-text("Pagar"), .ui-dialog:visible a:has-text("Pagar")'))
+        .first();
+      const anyPagar = page.getByRole("button", { name: /^Pagar$/i })
+        .or(page.locator('.ui-dialog button:has-text("Pagar"), button:has-text("Pagar")'))
+        .first();
+      if (await dialogPagar.count()) await dialogPagar.click({ force: true });
+      else if (await anyPagar.count()) await anyPagar.click({ force: true });
+      else throw new Error("modal Pagar not found after sandwich");
+      console.log("Path B: sandwich → modal Pagar");
+      await waitAguardeGone(page, 60000);
+      await page.waitForTimeout(1500);
+    }
+
+    async function clickDollarIcon() {
+      const icons = await refreshActionClickables();
+      const n = await icons.count();
+      const payInRow = row.locator(
+        'a[title*="pagament" i], a[aria-label*="pagament" i], a[title*="$"], button[title*="pagament" i], img[title*="pagament" i], a[onclick*="pagament" i]',
+      );
+      if (await payInRow.count()) {
+        await payInRow.first().click({ force: true });
+        return;
+      }
+      if (n >= 3) await icons.nth(2).click({ force: true });
+      else if (n >= 1) await icons.nth(n - 1).click({ force: true });
+      else throw new Error("payment ($) action not found");
+      console.log("Path A: $ clicked");
+    }
+
+    async function closeDialogs() {
+      const fechar = page.getByRole("button", { name: /^Fechar$/i });
+      if (await fechar.count()) await fechar.click({ force: true }).catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.waitForTimeout(400);
+    }
+
+    // --- Path A first ---
+    let entryPath = "path_A_dollar";
+    await clickDollarIcon();
     await page.waitForTimeout(1500);
-    // Portal may show "Pagamento em Processamento" if boleto already issued → open pagfacil
     const procModal = page.getByText(/Pagamento em Processamento/i);
     if (await procModal.count()) {
       await shot(page, "05-pagamento-em-processamento.png");
-      const fechar = page.getByRole("button", { name: /^Fechar$/i });
-      if (await fechar.count()) await fechar.click({ force: true }).catch(() => {});
-      const pagfacilUrl =
-        (await lookupPagfacilUrl(env)) ||
-        "https://pagfacil.correios.com.br/boletos/8b4fc77e-b75f-4316-8149-bb43c896dadd/resumo";
-      console.log("processing → open pagfacil", pagfacilUrl);
-      await page.goto(pagfacilUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-      const captured = await capturePagfacilBoleto(page, context, {
-        tracking: TRACKING,
-        boletosDir: BOLETOS_DIR,
-        mediaDir: MEDIA,
-        shotPrefix: "11-recover",
-      });
-      result.taxAmount = captured.amount || result.taxAmount;
-      result.linha = captured.linha;
-      result.pdfPath = captured.pdfPath;
-      result.pdfSha = captured.pdfSha;
-      result.portalOrderId = captured.portalOrderId || result.portalOrderId;
-      result.dueDate = captured.dueDate || result.dueDate;
-      result.paymentStatus = captured.linha || captured.pdfPath ? "boleto_generated" : "boleto_generated";
-      result.ok = Boolean(result.taxAmount || result.linha);
-      result.note = `smoke ${TRACKING}: processing→pagfacil valor=${result.taxAmount || "?"} linha=${result.linha ? "yes" : "no"} pdf=${result.pdfPath ? "yes" : "no"}`;
-      result.raw.finalUrl = captured.finalUrl;
-      result.raw.pagamentoId = captured.pagamentoId;
-      result.raw.afterSnippet = captured.bodySnippet;
-      const db = await upsertDb(env, result);
-      writeFileSync(join(MEDIA, "result.json"), JSON.stringify({ result, db }, null, 2));
-      console.log("DB:", JSON.stringify(db, null, 2));
-      console.log("SMOKE_OK", JSON.stringify({
-        tracking: TRACKING,
-        taxAmount: result.taxAmount,
-        linha: result.linha,
-        pdfPath: result.pdfPath,
-        paymentStatus: result.paymentStatus,
-        orderId: db.order?.id || null,
-        taxId: db.tax?.id || null,
-        boletoId: db.boleto?.id || null,
-      }));
-      return;
+      await closeDialogs();
+      console.log("Path A blocked (Pagamento em Processamento) → Path B");
+      await clickSandwichThenPagar("05b-modal-sandwich.png");
+      entryPath = "path_B_sandwich";
     }
+    result.raw.entryPath = entryPath;
 
     await waitAguardeGone(page, 30000);
     await page.waitForTimeout(1500);
     await shot(page, "05-efetuar-pagamento.png");
 
-    // Checkbox ciência (must enable Concluir pagamento)
-    const ciencia = page.locator('input[type="checkbox"]').filter({ has: page.locator("xpath=..") }).first();
-    const checkboxes = page.locator('input[type="checkbox"]:visible');
-    if (await checkboxes.count()) {
-      const box = checkboxes.first();
-      if (!(await box.isChecked())) {
-        await box.check({ force: true }).catch(async () => {
-          await page.locator("label").filter({ hasText: /Estou ciente/i }).click({ force: true });
+    // Shared: ciência → Concluir → Boleto → pagfacil → Copiar código / PDF
+    async function runThroughBoletoAndCapture(shotPrefix) {
+      // Shared tail after landing on Efetuar Pagamento (ciência → Concluir → Boleto → pagfacil)
+      const boxes = page.locator('input[type="checkbox"]:visible');
+      if (await boxes.count()) {
+        const box = boxes.first();
+        if (!(await box.isChecked())) {
+          await box.check({ force: true }).catch(async () => {
+            await page.locator("label").filter({ hasText: /Estou ciente/i }).click({ force: true });
+          });
+        }
+      } else {
+        await page.getByText(/Estou ciente/i).click({ force: true }).catch(() => {});
+      }
+      await waitAguardeGone(page, 30000);
+      await page.waitForTimeout(800);
+      const valor = await readValorAPagar(page);
+      if (valor) result.taxAmount = valor;
+      console.log("valor_a_pagar:", result.taxAmount);
+
+      const concluir = page.getByRole("button", { name: /Concluir pagamento/i })
+        .or(page.locator('button:has-text("Concluir pagamento"), input[value*="Concluir pagamento" i], a:has-text("Concluir pagamento")'))
+        .first();
+      if (!(await concluir.count()) || !(await concluir.isVisible().catch(() => false))) {
+        await page.locator("label").filter({ hasText: /Estou ciente/i }).click({ force: true }).catch(() => {});
+        await page.waitForTimeout(800);
+      }
+      // Listen for pagfacil popup before Concluir (Path B may open it directly)
+      const popupPromise = context.waitForEvent("page", { timeout: 45000 }).catch(() => null);
+      await concluir.click({ timeout: 15000 });
+      await waitAguardeGone(page, 60000);
+      await page.waitForTimeout(2000);
+      await shot(page, `${shotPrefix}-after-concluir.png`);
+
+      let boletoPage = page;
+      const popup = await popupPromise;
+      if (popup) {
+        await popup.waitForLoadState("domcontentloaded").catch(() => {});
+        boletoPage = popup;
+        console.log("pagfacil popup after Concluir:", popup.url());
+      }
+
+      // Already on pagfacil? (Path B often skips method picker)
+      const onPagfacil =
+        /pagfacil\.correios|\/boletos\//i.test(boletoPage.url()) ||
+        (await boletoPage.getByText(/Copiar c[oó]digo de barras|Pagar boleto|Imprimir Boleto/i).count().catch(() => 0)) > 0 ||
+        (await page.getByText(/Copiar c[oó]digo de barras|Pagar boleto|Imprimir Boleto/i).count().catch(() => 0)) > 0;
+      if (onPagfacil) {
+        if (!/pagfacil|boletos/i.test(boletoPage.url()) && /pagfacil|boletos/i.test(page.url())) boletoPage = page;
+        // Prefer page that has Copiar
+        if (!(await boletoPage.getByText(/Copiar c[oó]digo de barras/i).count())) {
+          if (await page.getByText(/Copiar c[oó]digo de barras/i).count()) boletoPage = page;
+        }
+        console.log("already on pagfacil — skip Boleto picker");
+        return capturePagfacilBoleto(boletoPage, context, {
+          tracking: TRACKING,
+          boletosDir: BOLETOS_DIR,
+          mediaDir: MEDIA,
+          shotPrefix: `${shotPrefix}-pagfacil`,
         });
       }
-    } else {
-      await page.getByText(/Estou ciente/i).click({ force: true }).catch(() => {});
-    }
-    await waitAguardeGone(page, 30000);
-    await page.waitForTimeout(1000);
 
-    result.taxAmount = await readValorAPagar(page);
-    const payPageText = await page.locator("body").innerText();
-    result.raw.paySnippet = payPageText.slice(0, 2000);
-    console.log("valor_a_pagar:", result.taxAmount);
+      await shot(page, `${shotPrefix}-forma-pagamento.png`);
+      const boletoCard = page.locator("div, button, a, label, li").filter({ hasText: /^Boleto Banc[aá]rio/i }).first();
+      const boletoText = page.getByText(/Boleto Banc[aá]rio/i).first();
+      if (await boletoCard.count()) await boletoCard.click({ force: true });
+      else if (await boletoText.count()) await boletoText.click({ force: true });
+      else throw new Error("Boleto Bancário option not found");
+      await page.waitForTimeout(1500);
+      await shot(page, `${shotPrefix}-boleto-selected.png`);
 
-    // Concluir pagamento → formas de pagamento
-    const concluir = page.getByRole("button", { name: /Concluir pagamento/i })
-      .or(page.locator('button:has-text("Concluir pagamento"), input[value*="Concluir pagamento" i], a:has-text("Concluir pagamento")'))
-      .first();
-    if (!(await concluir.count()) || !(await concluir.isVisible().catch(() => false))) {
-      // checkbox may still be blocking — click label then retry
-      await page.locator("label").filter({ hasText: /Estou ciente/i }).click({ force: true }).catch(() => {});
-      await page.waitForTimeout(800);
-    }
-    await concluir.click({ timeout: 15000 });
-    await waitAguardeGone(page, 60000);
-    await page.waitForTimeout(2000);
-    await shot(page, "06-forma-pagamento.png");
-
-    // Choose Boleto Bancário on "Como você prefere pagar?"
-    const boletoCard = page.locator("div, button, a, label, li").filter({ hasText: /^Boleto Banc[aá]rio/i }).first();
-    const boletoText = page.getByText(/Boleto Banc[aá]rio/i).first();
-    if (await page.getByText(/Como você prefere pagar/i).count()) {
-      console.log("on payment method page");
-    }
-    if (await boletoCard.count()) {
-      await boletoCard.click({ force: true });
-    } else if (await boletoText.count()) {
-      await boletoText.click({ force: true });
-    } else {
-      result.error = "Boleto Bancário option not found (still on efetuar pagamento?)";
-      await shot(page, "06b-no-boleto.png");
-      // still persist valor if we have it
-      if (result.taxAmount) {
-        result.paymentStatus = "awaiting_payment";
-        result.ok = true;
-        const db = await upsertDb(env, result);
-        console.log("DB:", JSON.stringify(db, null, 2));
+      const popupPromise2 = context.waitForEvent("page", { timeout: 45000 }).catch(() => null);
+      const pagarModal = page.getByRole("button", { name: /^Pagar$/i })
+        .or(page.locator('.ui-dialog button:has-text("Pagar"), button:has-text("Pagar")'))
+        .first();
+      if (await pagarModal.count()) {
+        await pagarModal.click({ force: true });
+        console.log("clicked Deseja Pagar com Boleto? → Pagar");
       }
-      throw new Error(result.error);
-    }
-    await page.waitForTimeout(1500);
-    await shot(page, "07-boleto-selected.png");
+      const popup2 = await popupPromise2;
+      if (popup2) {
+        await popup2.waitForLoadState("domcontentloaded").catch(() => {});
+        boletoPage = popup2;
+        console.log("boleto popup url:", popup2.url());
+      } else {
+        await page.waitForTimeout(2500);
+        if (/pagfacil|boleto/i.test(page.url())) boletoPage = page;
+      }
 
-    // Confirm modal "Deseja Pagar com Boleto?" → Pagar (may navigate to pagfacil)
-    const popupPromise = context.waitForEvent("page", { timeout: 45000 }).catch(() => null);
-    const pagarModal = page.getByRole("button", { name: /^Pagar$/i })
-      .or(page.locator('.ui-dialog button:has-text("Pagar"), button:has-text("Pagar")'))
-      .first();
-    if (await pagarModal.count()) {
-      await pagarModal.click({ force: true });
-      console.log("clicked modal Pagar");
+      return capturePagfacilBoleto(boletoPage, context, {
+        tracking: TRACKING,
+        boletosDir: BOLETOS_DIR,
+        mediaDir: MEDIA,
+        shotPrefix: `${shotPrefix}-pagfacil`,
+      });
     }
-    let boletoPage = page;
-    const popup = await popupPromise;
-    if (popup) {
-      await popup.waitForLoadState("domcontentloaded").catch(() => {});
-      boletoPage = popup;
-      console.log("boleto popup url:", popup.url());
-    } else {
+
+    let captured = await runThroughBoletoAndCapture(entryPath === "path_B_sandwich" ? "08b" : "08a");
+
+    // Empty barcode / already-issued → Path B if we still used Path A
+    if (!captured.linha && !captured.pdfPath && entryPath === "path_A_dollar") {
+      console.log("Path A pagfacil empty barcode → fallback Path B (sandwich)");
+      await shot(page, "08a-empty-barcode.png");
+      // Back to search results
+      await gotoRetry(page, SEARCH_URL);
+      await page.waitForTimeout(1000);
+      const entendi2 = page.getByRole("button", { name: /^Entendi$/i });
+      if (await entendi2.count()) await entendi2.click({ force: true }).catch(() => {});
+      // Re-search
+      const labeled2 = page.getByLabel(/c[oó]digo da encomenda/i);
+      if (await labeled2.count()) await labeled2.fill(TRACKING);
+      else {
+        const boxes2 = page.locator('input[type="text"]:visible');
+        if (await boxes2.count()) await boxes2.first().fill(TRACKING);
+      }
+      const searchBtn2 = page.locator('input[type="submit"][value*="Pesquisar" i]:visible, button:visible:has-text("Pesquisar")').first();
+      if (await searchBtn2.count()) await searchBtn2.click();
       await page.waitForTimeout(2500);
-      // maybe same-tab navigation to pagfacil
-      if (/pagfacil|boleto/i.test(page.url())) {
-        console.log("boleto same-tab url:", page.url());
-      }
+      await shot(page, "04b-research-pathB.png");
+      await clickSandwichThenPagar("05c-modal-sandwich-fallback.png");
+      entryPath = "path_B_sandwich_fallback";
+      result.raw.entryPath = entryPath;
+      await waitAguardeGone(page, 30000);
+      await page.waitForTimeout(1000);
+      await shot(page, "05c-efetuar-pagamento.png");
+      captured = await runThroughBoletoAndCapture("08b");
     }
-    // Paulo's step: Copiar código de barras → clipboard → persist linha; then Imprimir PDF
-    const captured = await capturePagfacilBoleto(boletoPage, context, {
-      tracking: TRACKING,
-      boletosDir: BOLETOS_DIR,
-      mediaDir: MEDIA,
-      shotPrefix: "08-pagfacil",
-    });
+
     result.taxAmount = result.taxAmount || captured.amount;
     result.linha = captured.linha;
     result.pdfPath = captured.pdfPath;
@@ -612,10 +656,11 @@ async function main() {
     result.raw.finalUrl = captured.finalUrl;
     result.raw.pagamentoId = captured.pagamentoId;
     result.raw.urlBoleto = captured.urlBoleto;
+    result.raw.entryPath = entryPath;
 
     result.paymentStatus = result.pdfPath || result.linha ? "boleto_generated" : "awaiting_payment";
     result.ok = Boolean(result.taxAmount || result.linha);
-    result.note = `smoke ${TRACKING}: valor=${result.taxAmount || "?"} status=${result.paymentStatus} linha=${result.linha ? "yes" : "no"} pdf=${result.pdfPath ? "yes" : "no"}`;
+    result.note = `smoke ${TRACKING}: path=${entryPath} valor=${result.taxAmount || "?"} status=${result.paymentStatus} linha=${result.linha ? "yes" : "no"} pdf=${result.pdfPath ? "yes" : "no"}`;
 
     const db = await upsertDb(env, result);
     writeFileSync(join(MEDIA, "result.json"), JSON.stringify({ result, db }, null, 2));
