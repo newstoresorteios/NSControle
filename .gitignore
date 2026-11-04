@@ -47,3 +47,8 @@ __pycache__/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Correios RPA boleto PDFs
+storage/boletos/*.pdf
+storage/boletos/*.PDF
+
