@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { monthSummary, type MoneyOrder } from "./finance.ts";
+import { monthSummary, salesByTrayStore, type MoneyOrder } from "./finance.ts";
 import { refundTotal } from "./refunds.ts";
 
 function close(actual: number | null, expected: number) {
@@ -14,6 +14,17 @@ const blank = {
   shipping_cost: null,
   import_tax: null,
 };
+
+test("vendas da loja nova separam 687890 e 1490060", () => {
+  const totals = salesByTrayStore([
+    { order_key: "26726", flow: "loja_nova", sale_amount: 100, ...blank },
+    { order_key: "1490060:479", flow: "loja_nova", sale_amount: 40, ...blank },
+    { order_key: "477", label: "Pedido 477 · 1490060", flow: "loja_nova", sale_amount: 10, ...blank },
+    { order_key: "encomenda-1", flow: "encomenda", sale_amount: 80, ...blank },
+  ]);
+  close(totals["687890"], 100);
+  close(totals["1490060"], 50);
+});
 
 test("agosto só com encomenda fecha como o cabeçalho da planilha", () => {
   const orders: MoneyOrder[] = [

@@ -31,6 +31,20 @@ test("pedido do BI vira venda da loja no mês da emissão", () => {
   assert.equal(row.purchase_amount, undefined);
 });
 
+test("pedido da loja 1490060 não reutiliza o número da loja 687890", () => {
+  const draft = draftFromBi(
+    { id: "1490060:479", number: "479", status: "order", date: "2026-11-04T03:00:00+00:00", total: 11800 },
+    { id: "1490060:479", number: "479", shippingCost: 49.14, trackingCode: "AE090643831BR" },
+  );
+  assert.ok(draft);
+  assert.equal(draft.order_key, "1490060:479");
+  assert.equal(draft.label, "Pedido 479 · 1490060");
+  assert.equal(draft.sale_amount, 11800);
+  assert.equal(draft.finance_month, "2026-11-01");
+  assert.equal(draft.shipping_cost, 49.14);
+  assert.equal(draft.tracking_code, "AE090643831BR");
+});
+
 test("orçamento do BI não entra no controle", () => {
   assert.equal(draftFromBi({ ...sale, status: "quote" }), null);
 });

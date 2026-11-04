@@ -42,6 +42,24 @@ export type MonthSummary = {
   daysInMonth: number;
 };
 
+export function trayStoreOf(order: { order_key: string; label?: string | null }): "687890" | "1490060" | null {
+  const qualified = /^(\d+):(\d+)$/.exec(order.order_key);
+  if (qualified?.[1] === "1490060" || (order.label || "").includes("1490060")) return "1490060";
+  if (qualified) return null;
+  return /^\d+$/.test(order.order_key) ? "687890" : null;
+}
+
+export function salesByTrayStore(orders: Array<MoneyOrder & { order_key: string; label?: string | null }>) {
+  const totals: Record<"687890" | "1490060", number> = { "687890": 0, "1490060": 0 };
+  for (const order of orders) {
+    if (order.flow !== "loja_nova") continue;
+    const store = trayStoreOf(order);
+    if (!store) continue;
+    totals[store] += asNumber(order.sale_amount) ?? 0;
+  }
+  return totals;
+}
+
 function sum(orders: MoneyOrder[], flow: string | null, field: keyof MoneyOrder) {
   return orders
     .filter((order) => flow == null || order.flow === flow)

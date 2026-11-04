@@ -10,9 +10,11 @@ export type BiOrder = {
 };
 
 export type BiShipment = {
+  id?: unknown;
   number?: unknown;
   shipmentStatus?: unknown;
   shippingMethod?: unknown;
+  shippingCost?: unknown;
   trackingCode?: unknown;
   shippedAt?: unknown;
   deliveredAt?: unknown;
@@ -34,9 +36,19 @@ function statusKey(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-export function draftFromBi(order: BiOrder, shipment?: BiShipment): TrayDraft | null {
-  const key = text(order.number) || text(order.id);
+export function biOrderKey(order: BiOrder): string | null {
+  const id = text(order.id);
+  const number = text(order.number);
+  if (id && /^(\d+):(\d+)$/.test(id)) return id;
+  const key = number || id;
   if (!key || !/^\d+$/.test(key)) return null;
+  return key;
+}
+
+export function draftFromBi(order: BiOrder, shipment?: BiShipment): TrayDraft | null {
+  const qualified = biOrderKey(order);
+  const key = qualified?.includes(":") ? qualified.split(":")[1] : qualified;
+  if (!key) return null;
   const status = statusKey(order.status);
   if (QUOTES.has(status)) return null;
 
@@ -57,6 +69,7 @@ export function draftFromBi(order: BiOrder, shipment?: BiShipment): TrayDraft | 
     customer: { name: text(order.customerName) },
     shipping: {
       shipment: text(shipment?.shippingMethod),
+      shipment_value: shipment?.shippingCost,
       sending_code: text(shipment?.trackingCode),
       sending_date: shipment?.deliveredAt || shipment?.shippedAt || null,
     },
@@ -77,7 +90,12 @@ export function draftFromBi(order: BiOrder, shipment?: BiShipment): TrayDraft | 
   }
   const issued = dateOnly(order.date);
   base.finance_month = monthStart(issued);
-  base.notes_tray = ["BI", text(order.customerName), text(shipment?.city), text(shipment?.shippingMethod)]
+  if (qualified?.includes(":")) {
+    const [store, number] = qualified.split(":");
+    base.order_key = qualified;
+    base.label = `Pedido ${number} · ${store}`;
+  }
+  base.notes_tray = ["BI", qualified?.includes(":") ? qualified.split(":")[0] : null, text(order.customerName), text(shipment?.city), text(shipment?.shippingMethod)]
     .filter(Boolean)
     .join(" · ")
     .slice(0, 4000);

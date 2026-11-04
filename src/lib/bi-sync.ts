@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { db, insertRow, updateRow } from "@/lib/db";
-import { applyBiDraft, draftFromBi, type BiOrder, type BiShipment } from "@/lib/bi-map";
+import { applyBiDraft, biOrderKey, draftFromBi, type BiOrder, type BiShipment } from "@/lib/bi-map";
 import type { StoredOrder } from "@/lib/tray-map";
 
 const FULL_LOOKBACK_DAYS = 180;
@@ -38,8 +38,10 @@ function shipmentMap(payload: unknown) {
     : [];
   const map = new Map<string, BiShipment>();
   for (const item of items) {
+    const id = String(item.id ?? "").trim();
     const number = String(item.number ?? "").trim();
-    if (number) map.set(number, item);
+    if (id) map.set(id, item);
+    if (number && !id.includes(":")) map.set(number, item);
   }
   return map;
 }
@@ -88,13 +90,14 @@ export async function runBiSync(options?: { recent?: boolean }): Promise<BiSyncR
     const orders = Array.isArray(ordersPayload) ? (ordersPayload as BiOrder[]) : [];
     const shipments = shipmentMap(logisticsPayload);
     const keys = orders
-      .map((order) => String(order.number ?? order.id ?? "").trim())
-      .filter((key) => /^\d+$/.test(key));
-    const existingRows = keys.length
+      .map((order) => biOrderKey(order))
+      .filter((key): key is string => Boolean(key));
+    const lookupKeys = [...new Set(keys.flatMap((key) => (key.includes(":") ? [key, key.split(":")[1]] : [key])))];
+    const existingRows = lookupKeys.length
       ? await db()<StoredOrder[]>`
           select ${db().unsafe(ORDER_COLUMNS)}
           from ctl_orders
-          where order_key in ${db()(keys)}
+          where order_key in ${db()(lookupKeys)}
           order by order_key,
             case flow when 'encomenda' then 0 when 'loja_nova' then 1 else 2 end,
             finance_month desc nulls last
@@ -108,14 +111,21 @@ export async function runBiSync(options?: { recent?: boolean }): Promise<BiSyncR
     let upserted = 0;
     let skipped = 0;
     for (const order of orders) {
-      const number = String(order.number ?? order.id ?? "").trim();
-      const draft = draftFromBi(order, shipments.get(number));
+      const ident = String(order.id ?? "").trim();
+      const number = String(order.number ?? "").trim();
+      const draft = draftFromBi(order, shipments.get(ident) ?? shipments.get(number));
       if (!draft) {
         skipped += 1;
         continue;
       }
-      const current = existing.get(draft.order_key) ?? null;
+      const qualified = existing.get(draft.order_key) ?? null;
+      const bare = draft.order_key.includes(":") ? existing.get(draft.order_key.split(":")[1]) ?? null : null;
+      const current = qualified ?? (bare?.data_source === "bi" ? bare : null);
       const merged = applyBiDraft(current, draft);
+      if (current && current.order_key !== draft.order_key) {
+        merged.row.order_key = draft.order_key;
+        merged.row.label = draft.label;
+      }
       if (current && !changed(current, merged.row)) {
         skipped += 1;
         continue;

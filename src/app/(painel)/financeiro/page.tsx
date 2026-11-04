@@ -2,7 +2,7 @@ import Link from "next/link";
 import { saveGoal } from "@/app/(painel)/financeiro/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { monthSummary } from "@/lib/finance";
+import { monthSummary, salesByTrayStore } from "@/lib/finance";
 import { estimateLucroReal } from "@/lib/finance-lucro-real";
 import { refundTotal } from "@/lib/refunds";
 import { TaxQueue } from "./tax-queue";
@@ -136,6 +136,7 @@ export default async function FinanceiroPage({
     where done_date >= ${monthDate} and done_date < ${monthEnd}
   `]);
   const summary = monthSummary(orders ?? [], asNumber(goal?.target_amount), selected);
+  const storeSales = salesByTrayStore(orders ?? []);
   const lucroReal = estimateLucroReal(orders ?? [], { icmsCreditFactor });
   const falta = gapOf(params.falta);
   const incomplete = (orders ?? []).filter((order) => {
@@ -168,8 +169,8 @@ export default async function FinanceiroPage({
         <div>
           <h1 className="page-title">Controle financeiro de {monthLabel(selected)}</h1>
           <p className="max-w-3xl text-sm text-muted">
-            Vendas e mês vêm do BI. Frete, produto e rastreio vêm do TRAYadaptor. Custo de compra, taxa da máquina,
-            taxa de importação e o status Comprado ficam na ficha do pedido.
+            Vendas e mês vêm do BI das lojas 687890 e 1490060. Frete, produto e rastreio vêm do TRAYadaptor.
+            Custo de compra, taxa da máquina, taxa de importação e o status Comprado ficam na ficha do pedido.
           </p>
         </div>
         <form className="flex flex-wrap items-center gap-2" action="/financeiro">
@@ -194,7 +195,9 @@ export default async function FinanceiroPage({
         <article className="card stat">
           <p className="kicker">Venda</p>
           <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.vendas)}</p>
-          <p className="mt-1 text-sm text-muted">Loja, encomenda e créditos.</p>
+          <p className="mt-1 text-sm text-muted">
+            687890 {brl(storeSales["687890"])} · 1490060 {brl(storeSales["1490060"])}. Encomenda e créditos entram no total.
+          </p>
         </article>
         <article className="card stat">
           <p className="kicker">Custo</p>
