@@ -38,11 +38,12 @@ function loadEnv() {
 }
 
 function parseArgs(argv) {
-  const out = { batch: false, limit: null, trackings: [], listPath: null };
+  const out = { batch: false, limit: null, trackings: [], listPath: null, progressPath: null };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--batch") out.batch = true;
     else if (a === "--from") out.listPath = argv[++i];
+    else if (a === "--progress") out.progressPath = argv[++i];
     else if (a === "--limit") out.limit = Number(argv[++i]);
     else if (/^\d+$/.test(a) && out.batch) out.limit = Number(a);
     else if (/^[A-Za-z]{2}\d{9}[A-Za-z]{2}$/.test(a)) out.trackings.push(a.toUpperCase());
@@ -169,6 +170,8 @@ async function searchTracking(page, tracking, env) {
 function situationFromRowText(text) {
   const t = String(text || "");
   if (/Entregue ao Destinat[aá]rio/i.test(t)) return "delivered";
+  // Paid on portal but amount may be missing in Neon — same comprovante flow as delivered
+  if (/Pagamento Confirmado/i.test(t)) return "payment_confirmed";
   if (/Aguardando Pagamento/i.test(t)) return "awaiting_payment";
   if (/Pagamento em Processamento/i.test(t)) return "processing";
   return "other";
@@ -319,7 +322,8 @@ async function processDelivered(page, context, tracking, mediaDir, env) {
     result.raw.rowText = rowText.slice(0, 300);
     console.log(tracking, "situation", result.situation);
 
-    if (result.situation !== "delivered") {
+    const comprovanteSituations = new Set(["delivered", "payment_confirmed"]);
+    if (!comprovanteSituations.has(result.situation)) {
       result.error = `not_delivered:${result.situation}`;
       result.paymentStatus = result.situation === "awaiting_payment" ? "awaiting_payment" : "no_action";
       await shot(page, mediaDir, "99-not-delivered.png");
@@ -329,17 +333,17 @@ async function processDelivered(page, context, tracking, mediaDir, env) {
     const icons = row.locator("td").first().locator("a:visible, button:visible, span.ui-button:visible");
     const n = await icons.count();
     console.log(tracking, "icons", n);
-    // Delivered: sandwich (0) opens Encomenda Entregue modal
+    // sandwich (0) opens Entregue / comprovante modal (also works for Pagamento Confirmado)
     await icons.nth(0).click({ force: true });
     await page.waitForTimeout(1200);
     await waitAguarde(page, 20000);
 
-    // Wait for Encomenda Entregue modal
-    const modalTitle = page.getByText(/Encomenda Entregue/i).first();
+    // Wait for entregue/comprovante modal
+    const modalTitle = page.getByText(/Encomenda Entregue|Comprovante|Pagamento Confirmado/i).first();
     await modalTitle.waitFor({ timeout: 15000 }).catch(() => {});
     await shot(page, mediaDir, "02-modal-entregue.png");
 
-    if (!(await page.getByText(/Encomenda Entregue/i).count()) &&
+    if (!(await page.getByText(/Encomenda Entregue|Comprovante/i).count()) &&
         !(await page.getByRole("button", { name: /Imprimir comprovante/i }).count())) {
       // try eye icon as fallback
       if (n >= 2) {
@@ -428,7 +432,7 @@ async function processDelivered(page, context, tracking, mediaDir, env) {
     await page.getByRole("button", { name: /^Fechar$/i }).click({ force: true }).catch(() => {});
 
     // Accounting: clearly paid/delivered WITH amount → tax_paid=true
-    if (result.amount && Number(result.amount) > 0 && (extracted?.paidHint || result.situation === "delivered")) {
+    if (result.amount && Number(result.amount) > 0 && (extracted?.paidHint || comprovanteSituations.has(result.situation))) {
       result.paymentStatus = "paid";
       result.taxPaid = true;
       result.ok = true;
@@ -534,9 +538,13 @@ mkdirSync(STORE_ENTREGUES, { recursive: true });
 mkdirSync(BOLETOS, { recursive: true });
 
 let trackings = [...args.trackings];
-const progressPath = join(STORE_ENTREGUES, "batch-progress.json");
+const progressPath = args.progressPath
+  ? resolve(args.progressPath)
+  : join(STORE_ENTREGUES, "batch-progress.json");
+mkdirSync(dirname(progressPath), { recursive: true });
 const doneSet = new Set();
 const neonPaidPath = join(STORE_ENTREGUES, "neon-already-paid.json");
+const isolateProgress = Boolean(args.progressPath);
 if (existsSync(progressPath)) {
   try {
     const prev = JSON.parse(readFileSync(progressPath, "utf8"));
@@ -545,7 +553,8 @@ if (existsSync(progressPath)) {
     /* ignore */
   }
 }
-if (existsSync(neonPaidPath)) {
+// Only merge Neon already-paid skip into the default Entregues progress file.
+if (!isolateProgress && existsSync(neonPaidPath)) {
   try {
     const paid = JSON.parse(readFileSync(neonPaidPath, "utf8"));
     for (const t of paid.trackings || []) doneSet.add(t);
