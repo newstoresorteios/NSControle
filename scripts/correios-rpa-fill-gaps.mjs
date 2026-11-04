@@ -170,6 +170,25 @@ try {
     for (const row of afterC) {
       const tracking = row.tracking_code;
       if (abDone.has(tracking)) continue;
+      // Skip Path A/B when Path C already proved the tracking is absent on the portal.
+      const pathCResultPath = join(ROOT, "storage/entregues", `${tracking}.json`);
+      if (existsSync(pathCResultPath)) {
+        try {
+          const prev = JSON.parse(readFileSync(pathCResultPath, "utf8"));
+          if (String(prev.error || "").includes("not_found_on_portal")) {
+            console.log("FILL_GAPS_SKIP_AB_NOT_FOUND", tracking);
+            abDone.add(tracking);
+            report.blockers.push({
+              tracking,
+              order_key: row.order_key,
+              error: "not_found_on_portal",
+            });
+            continue;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       report.pathAb.attempted += 1;
       console.log("FILL_GAPS_PATH_AB", tracking, "order", row.order_key);
       const { code, out } = await runNode(
