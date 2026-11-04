@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/lib/db';
 
 export async function signIn(data:FormData) {
-  const email=String(data.get('email') || '').trim().toLowerCase();
+  const typed=String(data.get('email') || '').trim().toLowerCase();
+  const email=typed==='admin' ? 'admin@newstoresorteios.com' : typed;
   const password=String(data.get('password') || '');
   const supabase=await createClient();
   const {error}=await supabase.auth.signInWithPassword({email,password});
