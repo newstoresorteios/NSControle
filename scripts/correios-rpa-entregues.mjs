@@ -57,16 +57,19 @@ async function shot(page, dir, name) {
   return p;
 }
 
-async function gotoRetry(page, url, n = 6) {
+async function gotoRetry(page, url, n = 5) {
   let err;
   for (let i = 1; i <= n; i++) {
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
       return;
     } catch (e) {
       err = e;
-      console.log("goto_retry", i, String(e.message || e).slice(0, 100));
-      await page.waitForTimeout(2000 * i);
+      const msg = String(e.message || e);
+      console.log("goto_retry", i, msg.slice(0, 100));
+      // Correios often resets — backoff hard before hammering
+      const reset = /ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_TIMED_OUT|net::/i.test(msg);
+      await page.waitForTimeout(reset ? 15000 * i : 2000 * i);
     }
   }
   throw err;
@@ -141,14 +144,21 @@ async function searchTracking(page, tracking, env) {
       return row;
     } catch (e) {
       lastErr = e;
-      console.log("search_retry", tracking, attempt, String(e.message || e).slice(0, 100));
+      const msg = String(e.message || e);
+      console.log("search_retry", tracking, attempt, msg.slice(0, 100));
       if (e.code === "not_found") throw e;
+      const reset = /ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_TIMED_OUT|net::/i.test(msg);
+      if (reset) {
+        console.log("search_backoff_reset 30s");
+        await page.waitForTimeout(30000);
+        // don't nest more goto storms — bubble up for main-loop session recover
+        throw e;
+      }
       if (attempt === 2 && env) {
         console.log("re-login after search failures");
         await login(page, env).catch(() => {});
       } else {
-        await page.waitForTimeout(1500 * attempt);
-        await gotoRetry(page, SEARCH).catch(() => {});
+        await page.waitForTimeout(2000 * attempt);
       }
     }
   }
@@ -719,7 +729,7 @@ try {
       definitive: isDefinitiveResult(result),
     }));
 
-    if ((i + 1) % 10 === 0 || i === trackings.length - 1) {
+    if ((i + 1) % 5 === 0 || i === trackings.length - 1) {
       console.log("PROGRESS", JSON.stringify({
         processedThisRun: i + 1,
         doneTotal: doneSet.size,
@@ -732,6 +742,19 @@ try {
         noAmount: summary.noAmount,
         errors: summary.errors,
       }));
+    }
+
+    // After connection-reset flakes, cool down + fresh browser session
+    if (result.error && /ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|net::/i.test(result.error)) {
+      console.log("cooldown_after_reset 45s + re-login");
+      await page.waitForTimeout(45000);
+      try {
+        await ensureSession();
+      } catch (loginErr) {
+        console.log("login_after_reset_failed", String(loginErr?.message || loginErr).slice(0, 120));
+        await page.waitForTimeout(60000);
+        await ensureSession();
+      }
     }
 
     if (i < trackings.length - 1) await page.waitForTimeout(DELAY_MS);
