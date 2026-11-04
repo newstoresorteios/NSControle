@@ -57,18 +57,33 @@ async function shot(page, dir, name) {
   return p;
 }
 
-async function gotoRetry(page, url, n = 4) {
+async function gotoRetry(page, url, n = 6) {
   let err;
   for (let i = 1; i <= n; i++) {
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
       return;
     } catch (e) {
       err = e;
-      await page.waitForTimeout(1500 * i);
+      console.log("goto_retry", i, String(e.message || e).slice(0, 100));
+      await page.waitForTimeout(2000 * i);
     }
   }
   throw err;
+}
+
+function isRetryableError(err) {
+  const m = String(err?.message || err || "");
+  return /Timeout|ERR_CONNECTION|net::|Target closed|Session closed|browser has been closed|not visible/i.test(m);
+}
+
+function isDefinitiveResult(result) {
+  if (result.ok && result.taxPaid) return true;
+  if (result.error?.startsWith("not_delivered")) return true;
+  if (result.error?.startsWith("not_found_on_portal")) return true;
+  if (result.error === "delivered_but_no_amount_extracted") return true;
+  if (result.error === "imprimir_comprovante_not_found") return true;
+  return false;
 }
 
 async function waitAguarde(page, ms = 45000) {
@@ -510,6 +525,7 @@ mkdirSync(BOLETOS, { recursive: true });
 let trackings = [...args.trackings];
 const progressPath = join(STORE_ENTREGUES, "batch-progress.json");
 const doneSet = new Set();
+const neonPaidPath = join(STORE_ENTREGUES, "neon-already-paid.json");
 if (existsSync(progressPath)) {
   try {
     const prev = JSON.parse(readFileSync(progressPath, "utf8"));
@@ -518,13 +534,24 @@ if (existsSync(progressPath)) {
     /* ignore */
   }
 }
+if (existsSync(neonPaidPath)) {
+  try {
+    const paid = JSON.parse(readFileSync(neonPaidPath, "utf8"));
+    for (const t of paid.trackings || []) doneSet.add(t);
+  } catch {
+    /* ignore */
+  }
+}
+
+const listPath = args.listPath || join(STORE_ENTREGUES, "entregues-trackings.json");
+let listTotal = trackings.length;
 if (args.batch || !trackings.length) {
-  const listPath = args.listPath || join(STORE_ENTREGUES, "entregues-trackings.json");
   if (!existsSync(listPath)) {
     console.error("LIST_MISSING — run parse-entregues-xlsx.mjs first:", listPath);
     process.exit(1);
   }
   const list = JSON.parse(readFileSync(listPath, "utf8"));
+  listTotal = (list.trackings || []).length;
   trackings = (list.trackings || []).filter((t) => !doneSet.has(t));
   if (args.limit) trackings = trackings.slice(0, args.limit);
 }
@@ -532,85 +559,198 @@ if (!trackings.length && !args.batch) {
   trackings = ["LW061145525US"];
 }
 
-console.log("ENTREGUES_RUN", { count: trackings.length, sample: trackings.slice(0, 5), delayMs: DELAY_MS });
+console.log("ENTREGUES_RUN", {
+  listTotal,
+  remaining: trackings.length,
+  alreadyDone: doneSet.size,
+  sample: trackings.slice(0, 5),
+  delayMs: DELAY_MS,
+});
 
-const browser = await chromium.launch({ headless: process.env.HEADED === "0", args: ["--disable-popup-blocking"] });
-const context = await browser.newContext({
+let browser = await chromium.launch({ headless: process.env.HEADED === "0", args: ["--disable-popup-blocking"] });
+let context = await browser.newContext({
   acceptDownloads: true,
   locale: "pt-BR",
   permissions: ["clipboard-read", "clipboard-write"],
 });
-const page = await context.newPage();
+let page = await context.newPage();
 const sql = postgres(env.DATABASE_URL_UNPOOLED || env.DATABASE_URL, { ssl: "require", max: 1, prepare: false });
 
 const summary = {
-  total: trackings.length,
+  listTotal,
+  remainingAtStart: trackings.length,
+  skippedAlreadyDone: doneSet.size,
   ok: 0,
   paid: 0,
   noAmount: 0,
   notDelivered: 0,
+  notFound: 0,
+  flakes: 0,
   errors: 0,
   samples: [],
 };
 
+async function ensureSession() {
+  for (let i = 1; i <= 5; i++) {
+    try {
+      await login(page, env);
+      return;
+    } catch (e) {
+      console.log("login_retry", i, String(e.message || e).slice(0, 120));
+      await page.waitForTimeout(3000 * i);
+      try {
+        await browser.close();
+      } catch {
+        /* ignore */
+      }
+      browser = await chromium.launch({ headless: process.env.HEADED === "0", args: ["--disable-popup-blocking"] });
+      context = await browser.newContext({
+        acceptDownloads: true,
+        locale: "pt-BR",
+        permissions: ["clipboard-read", "clipboard-write"],
+      });
+      page = await context.newPage();
+    }
+  }
+  throw new Error("login failed after retries");
+}
+
+function bumpSummary(result) {
+  if (result.ok && result.taxPaid) {
+    summary.ok += 1;
+    summary.paid += 1;
+  } else if (result.error?.startsWith("not_delivered")) summary.notDelivered += 1;
+  else if (result.error?.startsWith("not_found_on_portal")) summary.notFound += 1;
+  else if (result.error === "delivered_but_no_amount_extracted") summary.noAmount += 1;
+  else if (isRetryableError({ message: result.error })) summary.flakes += 1;
+  else summary.errors += 1;
+}
+
+function writeProgress(extra = {}) {
+  const payload = {
+    updatedAt: new Date().toISOString(),
+    doneCount: doneSet.size,
+    listTotal,
+    remaining: Math.max(0, listTotal - doneSet.size),
+    summary,
+    done: [...doneSet],
+    ...extra,
+  };
+  // keep last compact (avoid nesting huge done twice)
+  writeFileSync(progressPath, JSON.stringify(payload));
+  writeFileSync(join(STORE_ENTREGUES, "batch-summary.json"), JSON.stringify({
+    ...summary,
+    doneCount: doneSet.size,
+    remaining: Math.max(0, listTotal - doneSet.size),
+    updatedAt: new Date().toISOString(),
+  }, null, 2));
+}
+
 try {
-  await login(page, env);
+  await ensureSession();
   await shot(page, join(MEDIA_ROOT, "smoke-entregues"), "00-logged-in.png");
 
   for (let i = 0; i < trackings.length; i++) {
     const tracking = trackings[i];
     const mediaDir = join(MEDIA_ROOT, `smoke-${tracking}`);
-    console.log(`[${i + 1}/${trackings.length}]`, tracking);
-    const result = await processDelivered(page, context, tracking, mediaDir, env);
+    const remaining = trackings.length - i;
+    console.log(`[${i + 1}/${trackings.length}] remaining≈${remaining} done=${doneSet.size}/${listTotal}`, tracking);
+
+    let result;
+    try {
+      result = await processDelivered(page, context, tracking, mediaDir, env);
+    } catch (e) {
+      result = {
+        tracking,
+        path: "path_C_delivered_comprovante",
+        ok: false,
+        taxPaid: false,
+        amount: null,
+        linha: null,
+        paymentStatus: null,
+        error: String(e?.message || e).slice(0, 300),
+      };
+      if (isRetryableError(e)) {
+        console.log("session_recover after", tracking);
+        try {
+          await ensureSession();
+        } catch (loginErr) {
+          console.log("FATAL_LOGIN", loginErr);
+          writeProgress({ last: result, fatal: String(loginErr?.message || loginErr) });
+          throw loginErr;
+        }
+      }
+    }
+
     try {
       result.db = await persistResult(sql, result);
     } catch (e) {
       result.error = (result.error ? result.error + "; " : "") + "db:" + String(e.message || e).slice(0, 120);
     }
+
     writeFileSync(join(mediaDir, "path-c-result.json"), JSON.stringify(result, null, 2));
     writeFileSync(join(STORE_ENTREGUES, `${tracking}.json`), JSON.stringify(result, null, 2));
-    doneSet.add(tracking);
-    writeFileSync(progressPath, JSON.stringify({
-      updatedAt: new Date().toISOString(),
-      doneCount: doneSet.size,
-      done: [...doneSet],
-      last: result,
-    }));
 
-    if (result.ok && result.taxPaid) {
-      summary.ok += 1;
-      summary.paid += 1;
-    } else if (result.error?.startsWith("not_delivered")) summary.notDelivered += 1;
-    else if (result.error === "delivered_but_no_amount_extracted") summary.noAmount += 1;
-    else summary.errors += 1;
+    bumpSummary(result);
+    if (isDefinitiveResult(result)) {
+      doneSet.add(tracking);
+    } else {
+      // flake: leave out of doneSet so a later resume retries
+      console.log("flake_will_retry", tracking, result.error);
+    }
 
-    if (summary.samples.length < 12) {
+    writeProgress({ last: { tracking, amount: result.amount, taxPaid: result.taxPaid, error: result.error } });
+
+    if (summary.samples.length < 20 && result.taxPaid) {
       summary.samples.push({
         tracking,
         amount: result.amount,
-        linha: result.linha,
         taxPaid: result.taxPaid,
         status: result.paymentStatus,
-        error: result.error,
       });
     }
+
     console.log("RESULT", tracking, JSON.stringify({
       ok: result.ok,
       amount: result.amount,
-      linha: result.linha,
       taxPaid: result.taxPaid,
       status: result.paymentStatus,
       error: result.error,
+      definitive: isDefinitiveResult(result),
     }));
+
+    if ((i + 1) % 10 === 0 || i === trackings.length - 1) {
+      console.log("PROGRESS", JSON.stringify({
+        processedThisRun: i + 1,
+        doneTotal: doneSet.size,
+        listTotal,
+        remaining: Math.max(0, listTotal - doneSet.size),
+        paid: summary.paid,
+        notDelivered: summary.notDelivered,
+        notFound: summary.notFound,
+        flakes: summary.flakes,
+        noAmount: summary.noAmount,
+        errors: summary.errors,
+      }));
+    }
 
     if (i < trackings.length - 1) await page.waitForTimeout(DELAY_MS);
   }
 } finally {
-  writeFileSync(join(STORE_ENTREGUES, "batch-summary.json"), JSON.stringify(summary, null, 2));
-  writeFileSync(join(MEDIA_ROOT, "smoke-entregues", "batch-summary.json"), JSON.stringify(summary, null, 2));
-  console.log("SUMMARY", JSON.stringify(summary, null, 2));
+  writeProgress({ finishedRun: true });
+  writeFileSync(join(MEDIA_ROOT, "smoke-entregues", "batch-summary.json"), JSON.stringify({
+    ...summary,
+    doneCount: doneSet.size,
+    remaining: Math.max(0, listTotal - doneSet.size),
+  }, null, 2));
+  console.log("SUMMARY", JSON.stringify({
+    ...summary,
+    doneCount: doneSet.size,
+    remaining: Math.max(0, listTotal - doneSet.size),
+  }, null, 2));
   await sql.end({ timeout: 5 }).catch(() => {});
   await browser.close().catch(() => {});
 }
 
-if (summary.paid === 0 && summary.ok === 0) process.exitCode = 2;
+// Exit 0 if we made progress or finished; 2 only if nothing paid and remaining work had zero definitive
+if (summary.paid === 0 && summary.ok === 0 && doneSet.size === 0) process.exitCode = 2;
