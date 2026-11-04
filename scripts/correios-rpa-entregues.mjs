@@ -61,15 +61,16 @@ async function gotoRetry(page, url, n = 5) {
   let err;
   for (let i = 1; i <= n; i++) {
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      // commit is more reliable against Correios resets than domcontentloaded
+      await page.goto(url, { waitUntil: "commit", timeout: 60000 });
+      await page.waitForLoadState("domcontentloaded", { timeout: 45000 }).catch(() => {});
       return;
     } catch (e) {
       err = e;
       const msg = String(e.message || e);
       console.log("goto_retry", i, msg.slice(0, 100));
-      // Correios often resets — backoff hard before hammering
       const reset = /ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_TIMED_OUT|net::/i.test(msg);
-      await page.waitForTimeout(reset ? 15000 * i : 2000 * i);
+      await page.waitForTimeout(reset ? 10000 * i : 2000 * i);
     }
   }
   throw err;
