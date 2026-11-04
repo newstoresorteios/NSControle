@@ -577,10 +577,25 @@ console.log("ENTREGUES_RUN", {
   delayMs: DELAY_MS,
 });
 
-let browser = await chromium.launch({ headless: process.env.HEADED === "0", args: ["--disable-popup-blocking"] });
+async function launchBrowser() {
+  // Prefer installed Chrome on Windows — bundled Chromium often hits ERR_CONNECTION_RESET to Correios
+  const opts = {
+    headless: process.env.HEADED === "0",
+    args: ["--disable-popup-blocking", "--disable-http2"],
+  };
+  try {
+    return await chromium.launch({ ...opts, channel: "chrome" });
+  } catch {
+    return await chromium.launch(opts);
+  }
+}
+
+let browser = await launchBrowser();
 let context = await browser.newContext({
   acceptDownloads: true,
   locale: "pt-BR",
+  userAgent:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   permissions: ["clipboard-read", "clipboard-write"],
 });
 let page = await context.newPage();
@@ -636,10 +651,12 @@ async function ensureSession() {
       } catch {
         /* ignore */
       }
-      browser = await chromium.launch({ headless: process.env.HEADED === "0", args: ["--disable-popup-blocking"] });
+      browser = await launchBrowser();
       context = await browser.newContext({
         acceptDownloads: true,
         locale: "pt-BR",
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         permissions: ["clipboard-read", "clipboard-write"],
       });
       page = await context.newPage();
@@ -767,16 +784,16 @@ try {
       }));
     }
 
-    // After connection-reset flakes, cool down + fresh browser session
+    // After connection-reset flakes, cool down + try fresh session (non-fatal if login still fails)
     if (result.error && /ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|net::/i.test(result.error)) {
-      console.log("cooldown_after_reset 45s + re-login");
-      await page.waitForTimeout(45000);
+      console.log("cooldown_after_reset 60s + re-login");
+      await page.waitForTimeout(60000);
       try {
         await ensureSession();
       } catch (loginErr) {
-        console.log("login_after_reset_failed", String(loginErr?.message || loginErr).slice(0, 120));
-        await page.waitForTimeout(60000);
-        await ensureSession();
+        console.log("login_after_reset_failed_continue", String(loginErr?.message || loginErr).slice(0, 120));
+        // leave flake unmarked; until-done runner will retry later
+        await page.waitForTimeout(30000);
       }
     }
 
