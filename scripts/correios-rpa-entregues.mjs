@@ -174,6 +174,8 @@ function situationFromRowText(text) {
   if (/Pagamento Confirmado/i.test(t)) return "payment_confirmed";
   if (/Aguardando Pagamento/i.test(t)) return "awaiting_payment";
   if (/Pagamento em Processamento/i.test(t)) return "processing";
+  if (/Documento vinculado/i.test(t)) return "documento_vinculado";
+  if (/Fiscaliza[cç][aã]o|Aguardando an[aá]lise|Devolu/i.test(t)) return "customs_or_return";
   return "other";
 }
 
