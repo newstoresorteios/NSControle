@@ -487,7 +487,6 @@ create index if not exists ctl_correios_boletos_tax_idx
 create index if not exists ctl_correios_boletos_order_idx
   on public.ctl_correios_boletos (order_id)
   where order_id is not null;
-
 create table if not exists public.ctl_vault_entries (
   id uuid primary key default gen_random_uuid(),
   kind text not null check (kind in ('login', 'link')),
