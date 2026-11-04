@@ -1,13 +1,14 @@
 /**
  * Recover linha digitável + PDF from pagfacil boleto page.
- * Reads #urlBoleto and a[data-codigo] / #codigoBarras (from resumo.js).
+ * Usage: node --env-file=.env.local scripts/correios-rpa-recover-boleto.mjs [BOLETO_URL] [TRACKING]
+ * Does not set tax_paid=true.
  */
-import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import { chromium } from "playwright";
+import { capturePagfacilBoleto } from "./lib/pagfacil-capture.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -33,25 +34,16 @@ function loadEnv() {
   return values;
 }
 
-function extractLinha(text) {
-  if (!text) return null;
-  const compact = String(text).replace(/\D/g, "");
-  if (compact.length >= 47 && compact.length <= 48) return compact.slice(0, 47);
-  return null;
-}
-
-function parseMoney(text) {
-  const m = String(text || "").match(/R\$\s*([\d.]+,\d{2})/);
-  if (!m) return null;
-  return Number(m[1].replace(/\./g, "").replace(",", ".")).toFixed(2);
-}
-
 async function main() {
   const env = loadEnv();
   mkdirSync(MEDIA, { recursive: true });
   mkdirSync(BOLETOS_DIR, { recursive: true });
   const browser = await chromium.launch({ headless: false, args: ["--disable-popup-blocking"] });
-  const context = await browser.newContext({ acceptDownloads: true, locale: "pt-BR" });
+  const context = await browser.newContext({
+    acceptDownloads: true,
+    locale: "pt-BR",
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
   const page = await context.newPage();
 
   await page.goto("https://cas.correios.com.br/login?service=" + encodeURIComponent(SEARCH_URL), {
@@ -66,77 +58,19 @@ async function main() {
   if (await entendi.count()) await entendi.click({ force: true }).catch(() => {});
 
   await page.goto(BOLETO_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForTimeout(2500);
-  await page.screenshot({ path: join(MEDIA, "10-recover-dom.png"), fullPage: true });
-
-  const fields = await page.evaluate(() => {
-    const urlBoleto = document.querySelector("#urlBoleto")?.value || null;
-    const dataCodigo =
-      document.querySelector("#linkCodigoBarras a")?.dataset?.codigo ||
-      document.querySelector("[data-codigo]")?.getAttribute("data-codigo") ||
-      null;
-    const pText = document.querySelector("#codigoBarras p")?.innerText || null;
-    const pedido = document.querySelector("#pedido")?.value || null;
-    const pagamentoId = document.querySelector("#pagamentoId")?.value || null;
-    return { urlBoleto, dataCodigo, pText, pedido, pagamentoId, href: location.href };
-  });
-  console.log("fields", {
-    ...fields,
-    dataCodigo: fields.dataCodigo ? `len=${String(fields.dataCodigo).replace(/\D/g, "").length}` : null,
-    pText: fields.pText ? String(fields.pText).slice(0, 60) : null,
-    urlBoleto: fields.urlBoleto ? fields.urlBoleto.slice(0, 120) : null,
+  const captured = await capturePagfacilBoleto(page, context, {
+    tracking: TRACKING,
+    boletosDir: BOLETOS_DIR,
+    mediaDir: MEDIA,
+    shotPrefix: "12-recover",
   });
 
-  const linha = extractLinha(fields.dataCodigo) || extractLinha(fields.pText);
-  const text = await page.locator("body").innerText();
-  const amount = parseMoney(text) || "85.45";
-  const portal = fields.pedido || (text.match(/Resumo do Pedido\s*([0-9]+)/i) || [])[1] || null;
-  const due = (text.match(/Vencimento\s*(\d{2}\/\d{2}\/\d{4})/i) || [])[1];
-  const dueDate = due
-    ? `${due.split("/")[2]}-${due.split("/")[1]}-${due.split("/")[0]}`
-    : "2026-11-09";
-
-  let pdfBuf = null;
-  if (fields.urlBoleto) {
-    const resp = await context.request.get(fields.urlBoleto);
-    console.log("pdf_http", resp.status(), resp.headers()["content-type"]);
-    if (resp.ok()) {
-      const body = Buffer.from(await resp.body());
-      const ct = resp.headers()["content-type"] || "";
-      if (/pdf|octet/i.test(ct) || body.slice(0, 4).toString() === "%PDF") pdfBuf = body;
-      else {
-        // maybe HTML wrapper — save for debug
-        writeFileSync(join(MEDIA, "10-urlBoleto-body.bin"), body.slice(0, 2000));
-        console.log("urlBoleto not pdf, bytes", body.length, "head", body.slice(0, 20).toString());
-      }
-    }
-  }
-  if (!pdfBuf) {
-    // fallback: click imprimir and catch popup URL
-    const [pop] = await Promise.all([
-      context.waitForEvent("page", { timeout: 20000 }).catch(() => null),
-      page.locator("#btn-imprimir-boleto, button:has-text('Imprimir Boleto')").first().click({ force: true }),
-    ]);
-    if (pop) {
-      await pop.waitForLoadState("domcontentloaded").catch(() => {});
-      console.log("print_popup", pop.url());
-      const resp = await context.request.get(pop.url()).catch(() => null);
-      if (resp?.ok()) {
-        const body = Buffer.from(await resp.body());
-        if (body.slice(0, 4).toString() === "%PDF") pdfBuf = body;
-      }
-      await pop.close().catch(() => {});
-    }
-  }
-
-  let pdfPath = null;
-  let pdfSha = null;
-  if (pdfBuf && pdfBuf.length > 100) {
-    pdfPath = `storage/boletos/${TRACKING}.pdf`;
-    writeFileSync(join(ROOT, pdfPath), pdfBuf);
-    pdfSha = createHash("sha256").update(pdfBuf).digest("hex");
-    console.log("pdf_saved", pdfPath, "bytes", pdfBuf.length);
-  }
+  const amount = captured.amount || "85.45";
+  const linha = captured.linha;
+  const pdfPath = captured.pdfPath;
+  const pdfSha = captured.pdfSha;
+  const portal = captured.portalOrderId;
+  const dueDate = captured.dueDate || "2026-11-09";
 
   const sql = postgres(env.DATABASE_URL_UNPOOLED || env.DATABASE_URL, { ssl: "require", max: 1, prepare: false });
   try {
@@ -155,8 +89,9 @@ async function main() {
         raw_payload = coalesce(raw_payload, '{}'::jsonb) || ${sql.json({
           recover: true,
           boletoUrl: BOLETO_URL,
-          urlBoleto: fields.urlBoleto,
-          pagamentoId: fields.pagamentoId,
+          urlBoleto: captured.urlBoleto,
+          pagamentoId: captured.pagamentoId,
+          finalUrl: captured.finalUrl,
         })},
         last_scraped_at = now(),
         updated_at = now()
@@ -206,7 +141,6 @@ async function main() {
           notes_robot = left(coalesce(notes_robot,'') || E'\n' || ${`smoke recover ${TRACKING}: boleto_generated valor=${amount} linha=${linha ? "yes" : "no"} pdf=${pdfPath ? "yes" : "no"}`}, 2000)
         where id = ${orderId}
       `;
-      // tax_paid intentionally false
     }
 
     const out = { amount, linha, pdfPath, portal, dueDate, tax, boleto, tax_paid: false };
