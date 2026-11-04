@@ -25,6 +25,7 @@ create table if not exists public.ctl_correios_taxas (
     check (payment_status in (
       'pending',
       'awaiting_payment',
+      'boleto_pending',
       'boleto_generated',
       'paid',
       'overdue',
