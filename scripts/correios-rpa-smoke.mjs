@@ -3,12 +3,12 @@
  * Usage: node --env-file=.env.local scripts/correios-rpa-smoke.mjs [TRACKING]
  * Never logs CORREIOS_PASSWORD. Does not set tax_paid=true on boleto generation.
  */
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import { chromium } from "playwright";
+import { capturePagfacilBoleto, extractLinha } from "./lib/pagfacil-capture.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -85,11 +85,30 @@ async function waitAguardeGone(page, ms = 60000) {
   await page.locator(".ui-dialog:visible, .ui-widget-overlay:visible").first().waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
 }
 
-function extractLinha(text) {
-  if (!text) return null;
-  const digits = String(text).replace(/\D/g, " ");
-  const m = digits.match(/\b(\d{47,48})\b/) || String(text).replace(/\s/g, "").match(/(\d{47,48})/);
-  return m ? m[1] : null;
+async function lookupPagfacilUrl(env) {
+  const url = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
+  if (!url) return null;
+  const sql = postgres(url, { ssl: "require", max: 1, prepare: false });
+  try {
+    const rows = await sql`
+      select portal_order_id, raw_payload
+      from ctl_correios_taxas
+      where upper(trim(tracking_code)) = ${TRACKING}
+      limit 1
+    `;
+    const row = rows[0];
+    if (!row) return null;
+    const payload = row.raw_payload || {};
+    const pagamentoId =
+      payload.pagamentoId ||
+      (typeof payload.boletoUrl === "string" && payload.boletoUrl.match(/boletos\/([a-f0-9-]+)/i)?.[1]) ||
+      null;
+    if (pagamentoId) return `https://pagfacil.correios.com.br/boletos/${pagamentoId}/resumo`;
+    if (payload.boletoUrl) return payload.boletoUrl;
+    return null;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
 }
 
 async function shot(page, name) {
@@ -445,19 +464,48 @@ async function main() {
     if (!clickedPay) throw new Error("payment ($) action not found in row");
 
     await page.waitForTimeout(1500);
-    // Portal may show "Pagamento em Processamento" if boleto already issued
+    // Portal may show "Pagamento em Processamento" if boleto already issued → open pagfacil
     const procModal = page.getByText(/Pagamento em Processamento/i);
     if (await procModal.count()) {
       await shot(page, "05-pagamento-em-processamento.png");
-      result.paymentStatus = "boleto_generated";
-      result.error = "Pagamento em Processamento — boleto already issued; PDF/linha may need pagfacil recover";
-      result.ok = true;
-      result.note = `smoke ${TRACKING}: payment already processing`;
       const fechar = page.getByRole("button", { name: /^Fechar$/i });
       if (await fechar.count()) await fechar.click({ force: true }).catch(() => {});
+      const pagfacilUrl =
+        (await lookupPagfacilUrl(env)) ||
+        "https://pagfacil.correios.com.br/boletos/8b4fc77e-b75f-4316-8149-bb43c896dadd/resumo";
+      console.log("processing → open pagfacil", pagfacilUrl);
+      await page.goto(pagfacilUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+      const captured = await capturePagfacilBoleto(page, context, {
+        tracking: TRACKING,
+        boletosDir: BOLETOS_DIR,
+        mediaDir: MEDIA,
+        shotPrefix: "11-recover",
+      });
+      result.taxAmount = captured.amount || result.taxAmount;
+      result.linha = captured.linha;
+      result.pdfPath = captured.pdfPath;
+      result.pdfSha = captured.pdfSha;
+      result.portalOrderId = captured.portalOrderId || result.portalOrderId;
+      result.dueDate = captured.dueDate || result.dueDate;
+      result.paymentStatus = captured.linha || captured.pdfPath ? "boleto_generated" : "boleto_generated";
+      result.ok = Boolean(result.taxAmount || result.linha);
+      result.note = `smoke ${TRACKING}: processing→pagfacil valor=${result.taxAmount || "?"} linha=${result.linha ? "yes" : "no"} pdf=${result.pdfPath ? "yes" : "no"}`;
+      result.raw.finalUrl = captured.finalUrl;
+      result.raw.pagamentoId = captured.pagamentoId;
+      result.raw.afterSnippet = captured.bodySnippet;
       const db = await upsertDb(env, result);
+      writeFileSync(join(MEDIA, "result.json"), JSON.stringify({ result, db }, null, 2));
       console.log("DB:", JSON.stringify(db, null, 2));
-      console.log("SMOKE_PARTIAL_PROCESSING", JSON.stringify({ tracking: TRACKING, orderId: db.order?.id }));
+      console.log("SMOKE_OK", JSON.stringify({
+        tracking: TRACKING,
+        taxAmount: result.taxAmount,
+        linha: result.linha,
+        pdfPath: result.pdfPath,
+        paymentStatus: result.paymentStatus,
+        orderId: db.order?.id || null,
+        taxId: db.tax?.id || null,
+        boletoId: db.boleto?.id || null,
+      }));
       return;
     }
 
@@ -547,109 +595,27 @@ async function main() {
         console.log("boleto same-tab url:", page.url());
       }
     }
-    await waitAguardeGone(boletoPage, 30000);
-    await boletoPage.waitForTimeout(1500);
-    await boletoPage.screenshot({ path: join(MEDIA, "08-after-boleto.png"), fullPage: true }).catch(() => {});
-    console.log("screenshot:", join(MEDIA, "08-after-boleto.png"));
-
-    const afterText = await boletoPage.locator("body").innerText().catch(() => "");
-    result.raw.afterSnippet = afterText.slice(0, 2000);
-    result.raw.finalUrl = boletoPage.url();
-    result.taxAmount = result.taxAmount || parseMoney(afterText);
-    const portalMatch =
-      afterText.match(/Resumo do Pedido\s*([0-9]+)/i) ||
-      afterText.match(/Pedido\s+([0-9]{10,})/i);
-    if (portalMatch) result.portalOrderId = portalMatch[1];
-    const dueMatch = afterText.match(/Vencimento\s*(\d{2}\/\d{2}\/\d{4})/i);
-    if (dueMatch) {
-      const [d, m, y] = dueMatch[1].split("/");
-      result.dueDate = `${y}-${m}-${d}`;
-    }
-
-    // Copiar código de barras → clipboard linha digitável
-    const copiar = boletoPage.getByText(/Copiar c[oó]digo de barras/i).first();
-    if (await copiar.count()) {
-      await copiar.click({ force: true });
-      await boletoPage.waitForTimeout(500);
-      const clip = await boletoPage.evaluate(async () => {
-        try {
-          return await navigator.clipboard.readText();
-        } catch {
-          return "";
-        }
-      }).catch(() => "");
-      result.linha = extractLinha(clip) || extractLinha(clip.replace(/\s/g, "")) || result.linha;
-      console.log("linha_from_clipboard:", result.linha ? `len=${result.linha.length}` : "none");
-    }
-    result.linha = result.linha || extractLinha(afterText);
-
-    // Imprimir Boleto → PDF download
-    let pdfBuf = null;
-    const pdfName = `${TRACKING}.pdf`;
-    const imprimir = boletoPage.getByRole("button", { name: /Imprimir Boleto/i })
-      .or(boletoPage.locator('button:has-text("Imprimir Boleto"), a:has-text("Imprimir Boleto")'))
-      .first();
-    if (await imprimir.count()) {
-      const [dl] = await Promise.all([
-        boletoPage.waitForEvent("download", { timeout: 45000 }).catch(() => null),
-        imprimir.click({ force: true }),
-      ]);
-      if (dl) {
-        const tmp = join(BOLETOS_DIR, `_tmp_${TRACKING}`);
-        await dl.saveAs(tmp);
-        pdfBuf = readFileSync(tmp);
-        try {
-          const { unlinkSync } = await import("node:fs");
-          unlinkSync(tmp);
-        } catch {
-          /* ignore */
-        }
-      } else {
-        // popup PDF window
-        const pdfPopup = await context.waitForEvent("page", { timeout: 10000 }).catch(() => null);
-        if (pdfPopup) {
-          await pdfPopup.waitForLoadState("domcontentloaded").catch(() => {});
-          await pdfPopup.screenshot({ path: join(MEDIA, "08c-pdf-popup.png"), fullPage: true }).catch(() => {});
-          const resp = await pdfPopup.request.get(pdfPopup.url()).catch(() => null);
-          if (resp && resp.ok()) pdfBuf = Buffer.from(await resp.body());
-          await pdfPopup.close().catch(() => {});
-        }
-      }
-    }
-
-    // Fallback: any pdf link
-    if (!pdfBuf) {
-      const pdfLink = boletoPage.locator('a[href*=".pdf" i], a:has-text("PDF"), a:has-text("DIT")').first();
-      if (await pdfLink.count()) {
-        const [dl] = await Promise.all([
-          boletoPage.waitForEvent("download", { timeout: 20000 }).catch(() => null),
-          pdfLink.click({ force: true }),
-        ]);
-        if (dl) {
-          const tmp = join(BOLETOS_DIR, `_tmp2_${TRACKING}`);
-          await dl.saveAs(tmp);
-          pdfBuf = readFileSync(tmp);
-        }
-      }
-    }
-
-    if (pdfBuf && pdfBuf.length > 100) {
-      const outPath = join(BOLETOS_DIR, pdfName);
-      writeFileSync(outPath, pdfBuf);
-      result.pdfPath = `storage/boletos/${pdfName}`;
-      result.pdfSha = createHash("sha256").update(pdfBuf).digest("hex");
-      // try extract linha from pdf text via strings
-      const asText = pdfBuf.toString("latin1");
-      result.linha = result.linha || extractLinha(asText);
-      console.log("pdf_saved:", outPath, "bytes=", pdfBuf.length);
-    } else {
-      console.log("pdf: not downloaded");
-    }
+    // Paulo's step: Copiar código de barras → clipboard → persist linha; then Imprimir PDF
+    const captured = await capturePagfacilBoleto(boletoPage, context, {
+      tracking: TRACKING,
+      boletosDir: BOLETOS_DIR,
+      mediaDir: MEDIA,
+      shotPrefix: "08-pagfacil",
+    });
+    result.taxAmount = result.taxAmount || captured.amount;
+    result.linha = captured.linha;
+    result.pdfPath = captured.pdfPath;
+    result.pdfSha = captured.pdfSha;
+    result.portalOrderId = captured.portalOrderId || result.portalOrderId;
+    result.dueDate = captured.dueDate || result.dueDate;
+    result.raw.afterSnippet = captured.bodySnippet;
+    result.raw.finalUrl = captured.finalUrl;
+    result.raw.pagamentoId = captured.pagamentoId;
+    result.raw.urlBoleto = captured.urlBoleto;
 
     result.paymentStatus = result.pdfPath || result.linha ? "boleto_generated" : "awaiting_payment";
-    result.ok = Boolean(result.taxAmount);
-    result.note = `smoke ${TRACKING}: valor=${result.taxAmount || "?"} status=${result.paymentStatus} boleto=${result.pdfPath ? "yes" : "no"}`;
-    result.raw.finalUrl = page.url();
+    result.ok = Boolean(result.taxAmount || result.linha);
+    result.note = `smoke ${TRACKING}: valor=${result.taxAmount || "?"} status=${result.paymentStatus} linha=${result.linha ? "yes" : "no"} pdf=${result.pdfPath ? "yes" : "no"}`;
 
     const db = await upsertDb(env, result);
     writeFileSync(join(MEDIA, "result.json"), JSON.stringify({ result, db }, null, 2));
