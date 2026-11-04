@@ -32,6 +32,7 @@ export type SheetOrder = {
   notes_internal: string | null;
   notes_robot: string | null;
   notes_human: string | null;
+  notes_tray: string | null;
   days_open: number | null;
 };
 
@@ -279,7 +280,15 @@ function sheetNote(row: SheetOrder) {
   const human = (row.notes_human || "").trim();
   const robot = (row.notes_robot || "").trim();
   if (human && robot && human !== robot) return `${human}\n${robot}`;
-  return human || robot;
+  return human || robot || trayObservation(row.notes_tray);
+}
+
+function trayObservation(value: string | null) {
+  return (value || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
 
 function OrderCell({ row, status }: { row: SheetOrder; status: SaveStatus }) {
