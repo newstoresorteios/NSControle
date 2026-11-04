@@ -195,7 +195,9 @@ test("frete da loja preenche custo vazio e preserva o da planilha", () => {
   };
   assert.equal(mergeTrayOrder(sheet, draft).row.shipping_cost, undefined);
   const fromTray: StoredOrder = { ...sheet, data_source: "tray", shipping_cost: "10.00" };
-  assert.equal(mergeTrayOrder(fromTray, draft).row.shipping_cost, 40);
+  assert.equal(mergeTrayOrder(fromTray, draft).row.shipping_cost, undefined);
+  const empty: StoredOrder = { ...fromTray, shipping_cost: null };
+  assert.equal(mergeTrayOrder(empty, draft).row.shipping_cost, 40);
 });
 
 test("planilha com status preenchido não volta para o status da loja", () => {

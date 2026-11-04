@@ -340,7 +340,7 @@ export function mergeTrayOrder(
   if (draft.sale_explicit) row.sale_amount = draft.sale_amount;
   if (draft.payment_date && (!sheetOwned || !existing.payment_date)) row.payment_date = draft.payment_date;
   if (!existing.purchase_date && draft.purchase_date) row.purchase_date = draft.purchase_date;
-  if (draft.shipping_cost != null && (existing.shipping_cost == null || existing.shipping_cost === "" || !sheetOwned)) {
+  if (draft.shipping_cost != null && (existing.shipping_cost == null || existing.shipping_cost === "")) {
     row.shipping_cost = draft.shipping_cost;
   }
   if (draft.tracking_code && (!sheetOwned || !existing.tracking_code)) row.tracking_code = draft.tracking_code;
