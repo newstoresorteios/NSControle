@@ -600,14 +600,37 @@ const summary = {
   samples: [],
 };
 
+async function waitPortalUp(maxWaitMs = 30 * 60 * 1000) {
+  const started = Date.now();
+  let n = 0;
+  while (Date.now() - started < maxWaitMs) {
+    n += 1;
+    try {
+      const resp = await fetch("https://portalimportador.correios.com.br/", {
+        method: "GET",
+        signal: AbortSignal.timeout(15000),
+      });
+      console.log("portal_up", { attempt: n, status: resp.status });
+      return true;
+    } catch (e) {
+      const wait = Math.min(120000, 20000 + n * 5000);
+      console.log("portal_down_wait", { attempt: n, wait_ms: wait, err: String(e.message || e).slice(0, 80) });
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  return false;
+}
+
 async function ensureSession() {
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 8; i++) {
+    const up = await waitPortalUp(10 * 60 * 1000);
+    if (!up) console.log("portal still down — trying login anyway", i);
     try {
       await login(page, env);
       return;
     } catch (e) {
       console.log("login_retry", i, String(e.message || e).slice(0, 120));
-      await page.waitForTimeout(3000 * i);
+      await page.waitForTimeout(Math.min(120000, 10000 * i));
       try {
         await browser.close();
       } catch {
