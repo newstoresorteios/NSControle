@@ -561,7 +561,7 @@ try {
     const tracking = trackings[i];
     const mediaDir = join(MEDIA_ROOT, `smoke-${tracking}`);
     console.log(`[${i + 1}/${trackings.length}]`, tracking);
-    const result = await processDelivered(page, context, tracking, mediaDir);
+    const result = await processDelivered(page, context, tracking, mediaDir, env);
     try {
       result.db = await persistResult(sql, result);
     } catch (e) {
