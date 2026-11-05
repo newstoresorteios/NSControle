@@ -406,17 +406,39 @@ function RequestAna({ id, orderKey, returnTo }: { id: string; orderKey: string; 
 }
 
 function PayTaxButton({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
   return (
-    <button
-      className="secondary"
-      type="button"
-      onClick={() => {
-        void copyText(text).then((ok) => setCopied(ok));
-      }}
-    >
-      {copied ? "Copiado" : "Pagar taxa"}
-    </button>
+    <>
+      <button className="secondary" type="button" onClick={() => { setCopied(false); setOpen(true); }}>Pagar taxa</button>
+      {open ? createPortal(
+        <div className="confirm-backdrop" onMouseDown={() => setOpen(false)}>
+          <div
+            className="card confirm confirm-tax"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pagar-taxa"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="pagar-taxa" className="section-title">Pagar taxa</h2>
+            <pre className="tax-slip">{text}</pre>
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={() => { void copyText(text).then(setCopied); }}>{copied ? "Copiado" : "Copiar"}</button>
+              <button className="secondary" type="button" onClick={() => setOpen(false)}>Fechar</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+    </>
   );
 }
 
