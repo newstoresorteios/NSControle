@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { patchOrder, requestAnaPurchase } from "@/app/(painel)/pedidos/actions";
 import { shortDate } from "@/lib/format";
-import { anaOriginAllowed } from "@/lib/integracao";
 
 export type SheetMode = "pedidos" | "acompanhamento" | "rastreio" | "entregues";
 
@@ -94,9 +93,9 @@ export function OrderSheet({
 function PedidosHead({ ana }: { ana: boolean }) {
   return (
     <>
-      <th>Pedido</th>
+      <th className={ana ? "pin pin-order" : undefined}>Pedido</th>
       <th>Origem</th>
-      {ana ? <th>Ana</th> : null}
+      {ana ? <th className="pin pin-ana">Ana</th> : null}
       <th className="check">Comprado</th>
       <th>ID</th>
       <th>Produto</th>
@@ -113,25 +112,21 @@ function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; ret
   const save = useSave(row.id);
   return (
     <>
-      <OrderCell row={row} status={save.status} />
+      <OrderCell row={row} status={save.status} pin={ana} />
       <td>
         <TextCell name="origin" value={row.origin} list="origens" onSave={save.run} />
       </td>
       {ana ? (
-        <td>
-          {anaOriginAllowed(row.origin) ? (
-            row.ana_requested ? (
-              <span className="text-xs text-muted">Com a Ana</span>
-            ) : row.product_name || row.supplier_ref ? (
-              <form action={requestAnaPurchase}>
-                <input type="hidden" name="id" value={row.id} />
-                <input type="hidden" name="retorno" value={returnTo} />
-                <button className="secondary" type="submit">Solicitar ANA</button>
-              </form>
-            ) : (
-              <span className="text-xs text-muted">Informe produto ou referência</span>
-            )
-          ) : null}
+        <td className="pin pin-ana">
+          {row.ana_requested ? (
+            <span className="text-xs text-muted">Com a Ana</span>
+          ) : (
+            <form action={requestAnaPurchase}>
+              <input type="hidden" name="id" value={row.id} />
+              <input type="hidden" name="retorno" value={returnTo} />
+              <button className="secondary" type="submit">Solicitar ANA</button>
+            </form>
+          )}
         </td>
       ) : null}
       <td className="check">
@@ -314,12 +309,12 @@ function trayObservation(value: string | null) {
     .trim();
 }
 
-function OrderCell({ row, status }: { row: SheetOrder; status: SaveStatus }) {
+function OrderCell({ row, status, pin = false }: { row: SheetOrder; status: SaveStatus; pin?: boolean }) {
   const number = row.order_key;
   const label = (row.label || "").trim();
   const extra = label && label !== number && label !== `Pedido ${number}` ? label : null;
   return (
-    <td className="min-w-36 whitespace-nowrap">
+    <td className={pin ? "pin pin-order min-w-36 whitespace-nowrap" : "min-w-36 whitespace-nowrap"}>
       <div className="flex items-baseline gap-2">
         <Link href={`/pedidos/${row.id}`} className="num underline">
           {number}

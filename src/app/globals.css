@@ -239,6 +239,29 @@ a.card:hover {
   white-space: nowrap;
 }
 
+.sheet .pin {
+  position: sticky;
+  z-index: 2;
+  background: var(--card);
+}
+
+.sheet th.pin {
+  z-index: 3;
+}
+
+.sheet .pin-order {
+  left: 0;
+}
+
+.sheet .pin-ana {
+  left: 9rem;
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.sheet tbody tr:hover td.pin {
+  background: #fafafa;
+}
+
 .sheet td {
   padding: 0.28rem 0.3rem;
   vertical-align: middle;

@@ -122,7 +122,7 @@ export default async function PedidosPage({
         <p className="text-sm text-danger">Não foi possível incluir a linha.</p>
       ) : null}
       {params.erro === "ana" ? (
-        <p className="text-sm text-danger">Só um pedido de origem Europa, com produto ou referência, pode ser solicitado à Ana.</p>
+        <p className="text-sm text-danger">Não foi possível solicitar este pedido à Ana.</p>
       ) : null}
       <nav className="flex flex-wrap gap-2">
         {ABAS.map((item) => (

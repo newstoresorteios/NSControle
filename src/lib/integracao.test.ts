@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANA_PURCHASE_FIELDS, anaOriginAllowed, anaPurchasePatch, anaPurchaseVisible, eligibleOrder, pdfInvoice, trayRecipient, recipientValid, transitionAllowed } from './integracao.ts';
+import { ANA_PURCHASE_FIELDS, anaPurchasePatch, anaPurchaseVisible, eligibleOrder, pdfInvoice, trayRecipient, recipientValid, transitionAllowed } from './integracao.ts';
 
 test('apenas pedidos a enviar sem entrega ou rastreio podem ser reservados',()=>{
   const order = {commercial_status:'A ENVIAR',delivered:false,tracking_code:null};
@@ -23,15 +23,9 @@ test('destinatário usa endereço de entrega e detecta dados incompletos',()=>{
   assert.equal(recipientValid({...recipient,tax_id:''}),false);
   assert.equal(recipientValid(trayRecipient({})),false);
 });
-test('só origem Europa solicitada aparece para a Ana', () => {
-  assert.equal(anaOriginAllowed('Europa'), true);
-  assert.equal(anaOriginAllowed(' europa '), true);
-  for (const origin of ['Japão', 'EUA', 'USA', 'Uscloser', 'Portugal', 'Tag', 'Global Alvaro', 'Loja', '', null]) {
-    assert.equal(anaOriginAllowed(origin), false);
-  }
-  assert.equal(anaPurchaseVisible({ origin: 'Europa', requested: true }), true);
-  assert.equal(anaPurchaseVisible({ origin: 'Europa', requested: false }), false);
-  assert.equal(anaPurchaseVisible({ origin: 'Japão', requested: true }), false);
+test('a Ana vê qualquer pedido solicitado, e nenhum que não foi pedido', () => {
+  assert.equal(anaPurchaseVisible({ requested: true }), true);
+  assert.equal(anaPurchaseVisible({ requested: false }), false);
 });
 test('a Ana grava só os fatos de compra e pagamento já existentes', () => {
   const saved = anaPurchasePatch({

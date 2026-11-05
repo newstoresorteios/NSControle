@@ -46,13 +46,8 @@ export const ANA_PURCHASE_FIELDS = [
   "payment_date",
 ] as const;
 
-export function anaOriginAllowed(origin: string | null | undefined) {
-  const folded = (origin ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-  return folded === "europa";
-}
-
-export function anaPurchaseVisible(order: { origin: string | null; requested: boolean }) {
-  return order.requested && anaOriginAllowed(order.origin);
+export function anaPurchaseVisible(order: { requested: boolean }) {
+  return order.requested;
 }
 
 export type AnaPurchasePatch = {
