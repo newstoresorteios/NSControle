@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { patchOrder, requestAnaPurchase } from "@/app/(painel)/pedidos/actions";
 import { shortDate } from "@/lib/format";
 
@@ -122,11 +123,7 @@ function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; ret
           {row.ana_requested ? (
             <span className="text-xs text-muted">Com a Ana</span>
           ) : (
-            <form action={requestAnaPurchase}>
-              <input type="hidden" name="id" value={row.id} />
-              <input type="hidden" name="retorno" value={returnTo} />
-              <button className="secondary" type="submit">Solicitar ANA</button>
-            </form>
+            <RequestAna id={row.id} orderKey={row.order_key} returnTo={returnTo} />
           )}
         </td>
       ) : null}
@@ -374,6 +371,46 @@ function AreaCell({
         onSave({ [name]: next });
       }}
     />
+  );
+}
+
+function RequestAna({ id, orderKey, returnTo }: { id: string; orderKey: string; returnTo: string }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+  return (
+    <>
+      <button className="secondary" type="button" onClick={() => setOpen(true)}>Solicitar ANA</button>
+      {open ? createPortal(
+        <div className="confirm-backdrop" onMouseDown={() => setOpen(false)}>
+          <div
+            className="card confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`ana-${id}`}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id={`ana-${id}`} className="section-title">Enviar para a Ana</h2>
+            <p className="mt-3 text-sm">Enviar o pedido {orderKey} para a Ana comprar?</p>
+            <div className="mt-4 flex gap-2">
+              <form action={requestAnaPurchase}>
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="retorno" value={returnTo} />
+                <button type="submit">Sim</button>
+              </form>
+              <button className="secondary" type="button" onClick={() => setOpen(false)}>Não</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+    </>
   );
 }
 

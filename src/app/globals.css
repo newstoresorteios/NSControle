@@ -320,6 +320,20 @@ summary.section-title {
   cursor: pointer;
 }
 
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(22, 23, 28, 0.45);
+  padding: 1rem;
+}
+
+.confirm {
+  width: min(24rem, 100%);
+}
+
 .nav-scroll {
   scrollbar-width: none;
 }
