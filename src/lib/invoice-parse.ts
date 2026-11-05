@@ -1,4 +1,4 @@
-export type InvoiceTemplate = "edjouse" | "pesci" | "ca" | "ia" | "desconhecido";
+export type InvoiceTemplate = "edjouse" | "pesci" | "ca" | "ia" | "desconhecido" | "anexo";
 export type InvoiceLineKind = "produto" | "taxa";
 
 export type ParsedLine = {
@@ -37,6 +37,7 @@ export const TEMPLATE_LABEL: Record<InvoiceTemplate, string> = {
   ca: "Fatura CA",
   ia: "Leitura por IA",
   desconhecido: "Layout novo",
+  anexo: "Fatura anexada na Europa",
 };
 
 const AMOUNT = String.raw`(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d+\.\d{2})`;

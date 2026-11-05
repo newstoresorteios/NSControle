@@ -29,7 +29,7 @@ const FILAS: Record<string, string> = {
 };
 
 const COLUMNS =
-  "id, label, order_key, origin, product_name, supplier_ref, supplier_name, supplier_purchase_date, purchased, cpf_linked, tax_paid, delivered, tracking_code, tracking_situation, tracking_alert, tracking_correios, tracking_event_at, purchase_date, payment_date, commercial_status, supplier_days, notes_internal, notes_robot, notes_human";
+  "id, label, order_key, origin, product_name, supplier_ref, supplier_name, supplier_purchase_date, purchased, cpf_linked, tax_paid, delivered, tracking_code, tracking_situation, tracking_alert, tracking_correios, tracking_event_at, purchase_date, payment_date, commercial_status, supplier_days, notes_internal, notes_robot, notes_human, exists(select 1 from ctl_integration_purchase_requests r where r.order_id = ctl_orders.id) as ana_requested";
 
 export default async function PedidosPage({
   searchParams,
@@ -121,6 +121,9 @@ export default async function PedidosPage({
       {params.erro === "salvar" || params.erro === "numero" ? (
         <p className="text-sm text-danger">Não foi possível incluir a linha.</p>
       ) : null}
+      {params.erro === "ana" ? (
+        <p className="text-sm text-danger">Só um pedido de origem Europa, com produto ou referência, pode ser solicitado à Ana.</p>
+      ) : null}
       <nav className="flex flex-wrap gap-2">
         {ABAS.map((item) => (
           <Link
@@ -191,6 +194,7 @@ export default async function PedidosPage({
       <OrderSheet
         rows={rows}
         mode={aba}
+        returnTo={href(listQuery)}
         emptyLabel={filtering ? "Nenhum pedido com esses filtros." : undefined}
       />
       {pages > 1 ? (
@@ -221,6 +225,7 @@ type RawOrder = Omit<SheetOrder, "tracking_event_local" | "days_open"> & {
 function toSheetOrder(order: RawOrder): SheetOrder {
   return {
     ...order,
+    ana_requested: Boolean(order.ana_requested),
     tracking_event_local: saoPauloLocal(order.tracking_event_at),
     days_open: daysSince(order.purchase_date),
   };

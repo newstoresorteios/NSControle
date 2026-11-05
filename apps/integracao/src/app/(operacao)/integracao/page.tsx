@@ -25,7 +25,7 @@ export default async function IntegracaoPage({searchParams}: {searchParams: Prom
     {params.erro ? <p role="alert" className="card text-danger">{params.erro}</p> : null}
     {params.ok ? <p role="status" className="text-ok">Operação concluída.</p> : null}
     <div className="grid gap-3 sm:grid-cols-3">{[[counts[0].total,'Unidades recebidas'],[counts[0].available,'Disponíveis'],[shipments.filter(s=>s.status !== 'enviado').length,'Envios em preparação']].map(([n,label])=><div className="card" key={label}><p className="text-3xl">{n}</p><p className="text-sm text-muted">{label}</p></div>)}</div>
-    <nav className="flex flex-wrap gap-4 text-sm underline"><a href="#recebimento">Recebimento</a><a href="#estoque">Estoque Europa</a><a href="#expedicao">Expedição</a><a href="#historico">Histórico</a></nav>
+    <nav className="flex flex-wrap gap-4 text-sm underline"><Link href="/integracao/compras">Compras</Link><a href="#recebimento">Recebimento</a><a href="#estoque">Estoque Europa</a><a href="#expedicao">Expedição</a><a href="#historico">Histórico</a></nav>
     <details id="recebimento" className="card"><summary className="section-title">Receber relógio</summary><p className="my-3 text-sm text-muted">O ID é gerado automaticamente. A unidade ficará disponível para a New Store solicitar um envio.</p>
       <form action={receiveUnit} className="grid gap-3 md:grid-cols-3">
         <Field name="brand" label="Marca"/><Field name="model" label="Modelo / referência" required/><Field name="serial_number" label="Número de série" required/>

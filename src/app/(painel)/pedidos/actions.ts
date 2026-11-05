@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { decimal, flag, integer, monthDate, text } from "@/lib/form";
-import { calendarDate, nonnegativeMoney } from "@/lib/operational";
+import { anaOriginAllowed } from "@/lib/integracao";
+import { calendarDate, nonnegativeMoney, validUuid } from "@/lib/operational";
 
 const SENTINEL = "0001-01-01";
 
@@ -125,6 +126,46 @@ export async function addSheetRow(formData: FormData) {
   }
   revalidatePath("/pedidos");
   redirect("/pedidos?aba=pedidos");
+}
+
+export async function requestAnaPurchase(formData: FormData) {
+  const actor = await requireTeam();
+  const id = text(formData, "id") ?? "";
+  const back = pedidosReturn(text(formData, "retorno"));
+  if (!validUuid(id)) redirect(withFlag(back, "erro", "ana"));
+  const [order] = await db()<{ id: string; origin: string | null; product_name: string | null; supplier_ref: string | null }[]>`
+    select id, origin, product_name, supplier_ref
+    from ctl_orders
+    where id = ${id}
+    limit 1
+  `;
+  const identifiable = Boolean(order?.product_name?.trim() || order?.supplier_ref?.trim());
+  if (!order || !anaOriginAllowed(order.origin) || !identifiable) redirect(withFlag(back, "erro", "ana"));
+  await db()`
+    insert into ctl_integration_purchase_requests (order_id, requested_by)
+    values (${order.id}, ${actor.email})
+    on conflict (order_id) do nothing
+  `;
+  revalidatePath("/pedidos");
+  redirect(back);
+}
+
+function pedidosReturn(value: string | null) {
+  if (!value || !value.startsWith("/pedidos") || value.startsWith("//")) return "/pedidos?aba=pedidos";
+  try {
+    const url = new URL(value, "http://local");
+    if (url.origin !== "http://local" || url.pathname !== "/pedidos") return "/pedidos?aba=pedidos";
+    url.searchParams.delete("erro");
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "/pedidos?aba=pedidos";
+  }
+}
+
+function withFlag(path: string, key: string, value: string) {
+  const url = new URL(path, "http://local");
+  url.searchParams.set(key, value);
+  return `${url.pathname}${url.search}`;
 }
 
 export async function patchOrder(id: string, raw: Record<string, unknown>) {

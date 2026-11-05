@@ -2,7 +2,9 @@
 
 Aplicação Next.js independente do NSControle, com build, servidor, login, sessão
 e interface próprios. A página operacional fica em `/integracao` neste aplicativo.
-Não possui as rotas de financeiro, compras ou administração do NSControle.
+Não possui as rotas de financeiro, compras de clientes ou administração do NSControle.
+A aba Compras lista só os pedidos de origem Europa que o time solicitou à Ana e grava
+status, valor, pagamento e faturas nos mesmos registros do NSControle.
 
 ## Executar
 
