@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { requireOperator } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { eligibleOrder } from '@/lib/integracao';
-import { receiveUnit, advanceShipment, relocateUnit } from './actions';
+import { advanceShipment, relocateUnit } from './actions';
+import { ReceiveDialog } from './receive-dialog';
 
 export default async function IntegracaoPage({searchParams}: {searchParams: Promise<{ok?:string;erro?:string;q?:string}>}) {
   const actor = await requireOperator();
@@ -26,14 +27,7 @@ export default async function IntegracaoPage({searchParams}: {searchParams: Prom
     {params.ok ? <p role="status" className="text-ok">Operação concluída.</p> : null}
     <div className="grid gap-3 sm:grid-cols-3">{[[counts[0].total,'Unidades recebidas'],[counts[0].available,'Disponíveis'],[shipments.filter(s=>s.status !== 'enviado').length,'Envios em preparação']].map(([n,label])=><div className="card" key={label}><p className="text-3xl">{n}</p><p className="text-sm text-muted">{label}</p></div>)}</div>
     <nav className="flex flex-wrap gap-4 text-sm underline"><Link href="/integracao/compras">Compras</Link><a href="#recebimento">Recebimento</a><a href="#estoque">Estoque Europa</a><a href="#expedicao">Expedição</a><a href="#historico">Histórico</a></nav>
-    <details id="recebimento" className="card"><summary className="section-title">Receber relógio</summary><p className="my-3 text-sm text-muted">O ID é gerado automaticamente. A unidade ficará disponível para a New Store solicitar um envio.</p>
-      <form action={receiveUnit} className="grid gap-3 md:grid-cols-3">
-        <Field name="brand" label="Marca"/><Field name="model" label="Modelo / referência" required/><Field name="serial_number" label="Número de série" required/>
-        <Field name="location" label="Localização física" required/><Field name="weight_g" label="Peso do produto com caixa (g)" type="number" required/>
-        <label>Foto da conferência<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required/><span className="text-xs">Até 4 MB</span></label>
-        <label className="md:col-span-3">Observações<textarea name="notes" maxLength={2000}/></label><button className="w-fit">Cadastrar recebimento</button>
-      </form>
-    </details>
+    <ReceiveDialog />
     <section id="estoque" className="card overflow-x-auto"><h2 className="section-title">Estoque Europa</h2><form className="my-3 flex gap-2"><input aria-label="Buscar unidade" name="q" defaultValue={params.q} placeholder="ID, série ou modelo"/><button className="secondary">Buscar</button></form>
       <table><thead><tr><th>ID / foto</th><th>Relógio / série</th><th>Localização</th><th>Peso</th><th>Status</th><th>Etiqueta</th></tr></thead><tbody>{units.map(u=><tr key={u.id}><td><a href={`/integracao/foto/${u.id}`} target="_blank" rel="noreferrer" className="underline">#{u.id} · Ver foto</a></td><td>{u.brand} {u.model}<p className="text-xs text-muted">Série: {u.serial_number}</p></td><td>{u.location}</td><td>{u.weight_g} g</td><td>{u.status}</td><td><Link className="underline" href={`/integracao/etiqueta/${u.id}`} target="_blank">Imprimir ID</Link></td></tr>)}</tbody></table>{!units.length ? <p className="py-4 text-muted">Nenhuma unidade encontrada.</p> : <p className="mt-3 text-xs text-muted">Até 100 unidades por consulta.</p>}
       <details className="mt-4"><summary className="cursor-pointer text-sm underline">Alterar localização de uma unidade</summary><form action={relocateUnit} className="mt-3 grid gap-3 md:grid-cols-3"><Field name="unit_id" label="ID da unidade" type="number" required/><Field name="location" label="Nova localização" required/><button>Salvar localização</button></form></details>
