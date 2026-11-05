@@ -30,7 +30,7 @@ export default async function ComprasPage({
     order by r.requested_at desc
     limit 200
   `;
-  const rows = found.filter((row) => anaPurchaseVisible({ origin: row.origin, requested: true }));
+  const rows = found.filter((row) => anaPurchaseVisible({ requested: true }));
   const ids = rows.map((row) => row.id);
   const invoices = ids.length
     ? await sql<InvoiceRow[]>`
@@ -57,7 +57,7 @@ export default async function ComprasPage({
         <p className="text-xs uppercase tracking-[0.2em] text-muted">New Store × Redirect Europa</p>
         <h1 className="page-title mt-2">Compras</h1>
         <p className="text-muted">
-          Pedidos de origem Europa que a New Store pediu para comprar. O status, o fornecedor, o valor e o pagamento
+          Pedidos que a New Store pediu para a Ana comprar, de qualquer origem. O status, o fornecedor, o valor e o pagamento
           ficam na ficha do pedido. As faturas entram em Pagamentos.
         </p>
       </header>
@@ -93,6 +93,7 @@ export default async function ComprasPage({
             <div>
               <h2 className="section-title">Pedido {row.order_key}</h2>
               <p>{row.product_name || "Produto ainda não informado"}</p>
+              {row.origin ? <p className="text-xs text-muted">Origem {row.origin}</p> : null}
               <p className="text-xs text-muted">Solicitado em {when(row.requested_at)}</p>
             </div>
             <p className="text-sm font-medium">{row.purchased ? "Comprado" : "Solicitado"}</p>

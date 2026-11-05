@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { decimal, flag, integer, monthDate, text } from "@/lib/form";
-import { anaOriginAllowed } from "@/lib/integracao";
 import { calendarDate, nonnegativeMoney, validUuid } from "@/lib/operational";
 
 const SENTINEL = "0001-01-01";
@@ -133,14 +132,13 @@ export async function requestAnaPurchase(formData: FormData) {
   const id = text(formData, "id") ?? "";
   const back = pedidosReturn(text(formData, "retorno"));
   if (!validUuid(id)) redirect(withFlag(back, "erro", "ana"));
-  const [order] = await db()<{ id: string; origin: string | null; product_name: string | null; supplier_ref: string | null }[]>`
-    select id, origin, product_name, supplier_ref
+  const [order] = await db()<{ id: string }[]>`
+    select id
     from ctl_orders
     where id = ${id}
     limit 1
   `;
-  const identifiable = Boolean(order?.product_name?.trim() || order?.supplier_ref?.trim());
-  if (!order || !anaOriginAllowed(order.origin) || !identifiable) redirect(withFlag(back, "erro", "ana"));
+  if (!order) redirect(withFlag(back, "erro", "ana"));
   await db()`
     insert into ctl_integration_purchase_requests (order_id, requested_by)
     values (${order.id}, ${actor.email})

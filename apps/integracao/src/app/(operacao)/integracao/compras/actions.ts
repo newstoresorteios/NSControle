@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireOperator } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { decimal, text } from "@/lib/form";
-import { anaOriginAllowed, anaPurchasePatch, pdfInvoice } from "@/lib/integracao";
+import { anaPurchasePatch, pdfInvoice } from "@/lib/integracao";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -43,7 +43,7 @@ async function visibleOrder(id: string) {
     where o.id = ${id}
     limit 1
   `;
-  if (!order || !anaOriginAllowed(order.origin)) return null;
+  if (!order) return null;
   return order;
 }
 
