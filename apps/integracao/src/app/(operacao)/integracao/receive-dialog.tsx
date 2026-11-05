@@ -1,26 +1,51 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import { useFormStatus } from "react-dom";
 import { receiveUnit } from "./actions";
 
+const maxPhotos = 8;
+const maxEach = 4 * 1024 * 1024;
+const maxTotal = 8 * 1024 * 1024;
+
 export function ReceiveDialog() {
   const [open, setOpen] = useState(false);
+  const [previews, setPreviews] = useState<{ url: string; name: string; size: number }[]>([]);
+  function close() {
+    setOpen(false);
+    setPreviews((current) => {
+      current.forEach((item) => URL.revokeObjectURL(item.url));
+      return [];
+    });
+  }
+
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") close();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+  useEffect(() => () => previews.forEach((item) => URL.revokeObjectURL(item.url)), [previews]);
+
+  const total = previews.reduce((sum, item) => sum + item.size, 0);
+  const blocked = previews.length > maxPhotos || previews.some((item) => item.size > maxEach) || total > maxTotal;
+
+  function onPick(event: ChangeEvent<HTMLInputElement>) {
+    const next = Array.from(event.target.files || []);
+    setPreviews((current) => {
+      current.forEach((item) => URL.revokeObjectURL(item.url));
+      return next.map((file) => ({ url: URL.createObjectURL(file), name: file.name, size: file.size }));
+    });
+  }
 
   return (
-    <div id="recebimento">
+    <div>
       <button type="button" onClick={() => setOpen(true)}>Receber relógio</button>
       {open ? createPortal(
-        <div className="confirm-backdrop" onMouseDown={() => setOpen(false)}>
+        <div className="confirm-backdrop" onMouseDown={close}>
           <div
             className="card confirm confirm-receive"
             role="dialog"
@@ -37,17 +62,23 @@ export function ReceiveDialog() {
               <Field name="location" label="Localização física" required />
               <Field name="weight_g" label="Peso do produto com caixa (g)" type="number" required />
               <label>
-                Foto da conferência
-                <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required />
-                <span className="text-xs">Até 4 MB</span>
+                Fotos da conferência
+                <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple required onChange={onPick} />
+                <span className="text-xs">De 1 a 8 fotos. Até 4 MB cada e 8 MB no total.</span>
               </label>
+              {previews.length ? (
+                <div className="photo-picks md:col-span-2">
+                  {previews.map((item) => <img key={item.url} src={item.url} alt={item.name} />)}
+                </div>
+              ) : null}
+              {blocked ? <p className="text-sm text-danger md:col-span-2">Reduza a quantidade ou o tamanho das fotos.</p> : null}
               <label className="md:col-span-2">
                 Observações
                 <textarea name="notes" maxLength={2000} />
               </label>
               <div className="flex gap-2 md:col-span-2">
-                <Submit />
-                <button className="secondary" type="button" onClick={() => setOpen(false)}>Cancelar</button>
+                <Submit blocked={blocked} />
+                <button className="secondary" type="button" onClick={close}>Cancelar</button>
               </div>
             </form>
           </div>
@@ -58,10 +89,10 @@ export function ReceiveDialog() {
   );
 }
 
-function Submit() {
+function Submit({ blocked }: { blocked: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending}>
+    <button type="submit" disabled={pending || blocked}>
       {pending ? <span className="spinner" /> : null}
       Cadastrar recebimento
     </button>
