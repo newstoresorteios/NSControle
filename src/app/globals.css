@@ -334,6 +334,20 @@ summary.section-title {
   width: min(24rem, 100%);
 }
 
+.confirm-tax {
+  width: min(42rem, 100%);
+}
+
+.tax-slip {
+  margin: 1rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
 .nav-scroll {
   scrollbar-width: none;
 }
