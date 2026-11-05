@@ -5,6 +5,7 @@ import { PageSizeSelect } from "@/components/page-size-select";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ACCENTS, PLAIN, idPresence, likePattern, orderDigits } from "@/lib/order-filters";
+import { taxPaymentText } from "@/lib/taxes";
 
 const PAGE_SIZES = [30, 50, 100, 200];
 const DEFAULT_PAGE_SIZE = 100;
@@ -96,7 +97,8 @@ export default async function PedidosPage({
     `,
   ]);
   const count = counted[0]?.total_count ?? 0;
-  const rows = found.map((order) => toSheetOrder(order));
+  const payments = await taxPayments(sql, found.map((order) => order.id));
+  const rows = found.map((order) => toSheetOrder(order, payments.get(order.id) ?? null));
   const pages = Math.max(Math.ceil((count ?? 0) / pageSize), 1);
   const hint = ABAS.find((item) => item.id === aba)?.hint;
   const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila, tamanho: pageSize };
@@ -218,17 +220,51 @@ export default async function PedidosPage({
   );
 }
 
-type RawOrder = Omit<SheetOrder, "tracking_event_local" | "days_open"> & {
+type RawOrder = Omit<SheetOrder, "tracking_event_local" | "days_open" | "tax_payment"> & {
   tracking_event_at: string | null;
 };
 
-function toSheetOrder(order: RawOrder): SheetOrder {
+function toSheetOrder(order: RawOrder, taxPayment: string | null): SheetOrder {
   return {
     ...order,
     ana_requested: Boolean(order.ana_requested),
+    tax_payment: taxPayment,
     tracking_event_local: saoPauloLocal(order.tracking_event_at),
     days_open: daysSince(order.purchase_date),
   };
+}
+
+async function taxPayments(sql: ReturnType<typeof db>, ids: string[]) {
+  const payments = new Map<string, string>();
+  if (!ids.length) return payments;
+  let found: { order_id: string; order_key: string; amount: string | null; linha: string | null }[] = [];
+  try {
+    found = await sql<{ order_id: string; order_key: string; amount: string | null; linha: string | null }[]>`
+    select distinct on (t.order_id)
+      t.order_id,
+      o.order_key,
+      coalesce(b.amount, t.tax_amount) as amount,
+      coalesce(nullif(btrim(t.linha_digitavel), ''), b.linha_digitavel) as linha
+    from ctl_correios_taxas t
+    join ctl_orders o on o.id = t.order_id
+    left join lateral (
+      select amount, linha_digitavel
+      from ctl_correios_boletos
+      where tax_id = t.id
+      order by downloaded_at desc
+      limit 1
+    ) b on true
+    where t.order_id in ${sql(ids)}
+    order by t.order_id, t.updated_at desc
+  `;
+  } catch (error) {
+    if ((error as { code?: string }).code !== "42P01") throw error;
+  }
+  for (const row of found) {
+    const text = taxPaymentText({ orderKey: row.order_key, amount: row.amount, linha: row.linha });
+    if (text) payments.set(row.order_id, text);
+  }
+  return payments;
 }
 
 type SheetFilters = {

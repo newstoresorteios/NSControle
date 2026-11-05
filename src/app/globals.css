@@ -292,6 +292,15 @@ a.card:hover {
   text-align: center;
 }
 
+.sheet .tax-pay {
+  min-width: 8.5rem;
+  text-align: center;
+}
+
+.sheet .tax-pay button {
+  margin-top: 0.35rem;
+}
+
 .sheet textarea {
   min-height: 2.4rem;
   resize: vertical;

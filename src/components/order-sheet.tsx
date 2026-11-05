@@ -34,6 +34,7 @@ export type SheetOrder = {
   notes_human: string | null;
   days_open: number | null;
   ana_requested: boolean;
+  tax_payment: string | null;
 };
 
 const COMMERCIAL = ["AGUARDANDO PAGAMENTO", "A ENVIAR VINDI", "A ENVIAR", "ENVIADO", "FINALIZADO", "ENTREGUE", "CANCELADO"];
@@ -143,8 +144,9 @@ function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; ret
       <td className="check">
         <CheckCell name="cpf_linked" checked={row.cpf_linked} onSave={save.run} />
       </td>
-      <td className="check">
+      <td className={row.tax_payment ? "tax-pay" : "check"}>
         <CheckCell name="tax_paid" checked={row.tax_paid} onSave={save.run} />
+        {row.tax_payment ? <PayTaxButton text={row.tax_payment} /> : null}
       </td>
       <td className="check">
         <CheckCell name="delivered" checked={row.delivered} onSave={save.run} />
@@ -364,6 +366,36 @@ function AreaCell({
       }}
     />
   );
+}
+
+function PayTaxButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="secondary"
+      type="button"
+      onClick={() => {
+        void copyText(text).then((ok) => setCopied(ok));
+      }}
+    >
+      {copied ? "Copiado" : "Pagar taxa"}
+    </button>
+  );
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
 }
 
 function CheckCell({
