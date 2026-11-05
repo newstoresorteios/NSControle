@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { patchOrder } from "@/app/(painel)/pedidos/actions";
+import { patchOrder, requestAnaPurchase } from "@/app/(painel)/pedidos/actions";
 import { shortDate } from "@/lib/format";
+import { anaOriginAllowed } from "@/lib/integracao";
 
 export type SheetMode = "pedidos" | "acompanhamento" | "rastreio" | "entregues";
 
@@ -34,6 +35,7 @@ export type SheetOrder = {
   notes_human: string | null;
   notes_tray: string | null;
   days_open: number | null;
+  ana_requested: boolean;
 };
 
 const COMMERCIAL = ["AGUARDANDO PAGAMENTO", "A ENVIAR VINDI", "A ENVIAR", "ENVIADO", "FINALIZADO", "ENTREGUE", "CANCELADO"];
@@ -41,12 +43,15 @@ const COMMERCIAL = ["AGUARDANDO PAGAMENTO", "A ENVIAR VINDI", "A ENVIAR", "ENVIA
 export function OrderSheet({
   rows,
   mode,
+  returnTo = "/pedidos?aba=pedidos",
   emptyLabel = "Nenhuma linha nesta aba.",
 }: {
   rows: SheetOrder[];
   mode: SheetMode;
+  returnTo?: string;
   emptyLabel?: string;
 }) {
+  const ana = mode === "pedidos";
   return (
     <div className="card sheet">
       <table>
@@ -54,7 +59,7 @@ export function OrderSheet({
           <tr>
             {mode === "acompanhamento" ? <AcompanhamentoHead /> : null}
             {mode === "rastreio" ? <RastreioHead /> : null}
-            {mode === "pedidos" || mode === "entregues" ? <PedidosHead /> : null}
+            {mode === "pedidos" || mode === "entregues" ? <PedidosHead ana={ana} /> : null}
           </tr>
         </thead>
         <tbody>
@@ -62,7 +67,7 @@ export function OrderSheet({
             <tr key={row.id}>
               {mode === "acompanhamento" ? <AcompanhamentoRow row={row} /> : null}
               {mode === "rastreio" ? <RastreioRow row={row} /> : null}
-              {mode === "pedidos" || mode === "entregues" ? <PedidosRow row={row} /> : null}
+              {mode === "pedidos" || mode === "entregues" ? <PedidosRow row={row} ana={ana} returnTo={returnTo} /> : null}
             </tr>
           ))}
           {rows.length === 0 ? (
@@ -86,11 +91,12 @@ export function OrderSheet({
   );
 }
 
-function PedidosHead() {
+function PedidosHead({ ana }: { ana: boolean }) {
   return (
     <>
       <th>Pedido</th>
       <th>Origem</th>
+      {ana ? <th>Ana</th> : null}
       <th className="check">Comprado</th>
       <th>ID</th>
       <th>Produto</th>
@@ -103,7 +109,7 @@ function PedidosHead() {
   );
 }
 
-function PedidosRow({ row }: { row: SheetOrder }) {
+function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; returnTo: string }) {
   const save = useSave(row.id);
   return (
     <>
@@ -111,6 +117,23 @@ function PedidosRow({ row }: { row: SheetOrder }) {
       <td>
         <TextCell name="origin" value={row.origin} list="origens" onSave={save.run} />
       </td>
+      {ana ? (
+        <td>
+          {anaOriginAllowed(row.origin) ? (
+            row.ana_requested ? (
+              <span className="text-xs text-muted">Com a Ana</span>
+            ) : row.product_name || row.supplier_ref ? (
+              <form action={requestAnaPurchase}>
+                <input type="hidden" name="id" value={row.id} />
+                <input type="hidden" name="retorno" value={returnTo} />
+                <button className="secondary" type="submit">Solicitar ANA</button>
+              </form>
+            ) : (
+              <span className="text-xs text-muted">Informe produto ou referência</span>
+            )
+          ) : null}
+        </td>
+      ) : null}
       <td className="check">
         <CheckCell name="purchased" checked={row.purchased} onSave={save.run} />
       </td>

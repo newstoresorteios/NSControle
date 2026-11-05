@@ -279,6 +279,11 @@ a.card:hover {
   height: 1rem;
 }
 
+.sheet button {
+  padding: 0.35rem 0.55rem;
+  letter-spacing: 0.06em;
+}
+
 summary.section-title {
   cursor: pointer;
 }

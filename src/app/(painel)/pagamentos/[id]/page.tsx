@@ -26,7 +26,8 @@ export default async function PagamentoPage({
     sql<Invoice[]>`
       select id, supplier_name, bill_to, invoice_number, invoice_date, currency, total_amount,
         payment_method, bank_name, iban, swift, beneficiary, due_date, due_amount,
-        template, status, draft_document, source_filename, raw_text, warning, fx_rate, fx_date
+        template, status, draft_document, source_filename, raw_text, warning, fx_rate, fx_date,
+        (document is not null) as has_document
       from ctl_supplier_invoices
       where id = ${id}
       limit 1
@@ -97,6 +98,9 @@ export default async function PagamentoPage({
           {invoice.draft_document ? " · PDF em rascunho" : ""}
           {invoice.source_filename ? ` · ${invoice.source_filename}` : ""}
         </p>
+        {invoice.has_document ? (
+          <a className="mt-2 inline-block text-sm underline" href={`/pagamentos/${invoice.id}/arquivo`}>Baixar PDF</a>
+        ) : null}
       </div>
       {message ? <p className={`text-sm ${message.tone === "ok" ? "text-ok" : "text-danger"}`}>{message.text}</p> : null}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -385,6 +389,7 @@ type Invoice = {
   warning: string | null;
   fx_rate: number | string | null;
   fx_date: string | null;
+  has_document: boolean;
 };
 
 type Line = {

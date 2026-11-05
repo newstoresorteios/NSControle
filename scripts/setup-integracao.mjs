@@ -6,6 +6,7 @@ const sql = postgres(connection.replace(/([?&])channel_binding=[^&]*/g,'$1').rep
 try {
   await sql.file(new URL('./integracao_schema.sql',import.meta.url));
   await sql.file(new URL('./integracao_separate.sql',import.meta.url));
+  await sql.file(new URL('./migrations/20261105_ctl_integration_purchases.sql',import.meta.url));
   const [result] = await sql`select count(*)::int as tables from information_schema.tables where table_schema='public' and table_name like 'ctl_integration_%'`;
   console.log(`Integração: ${result.tables} tabelas verificadas.`);
 } finally { await sql.end(); }
