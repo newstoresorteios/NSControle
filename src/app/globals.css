@@ -264,7 +264,7 @@ a.card:hover {
 
 .sheet td {
   padding: 0.28rem 0.3rem;
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .sheet tbody tr:hover td {
@@ -303,7 +303,8 @@ a.card:hover {
 
 .sheet textarea {
   min-height: 2.4rem;
-  resize: vertical;
+  overflow: hidden;
+  resize: none;
 }
 
 .sheet input[type="checkbox"] {

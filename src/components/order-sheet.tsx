@@ -332,6 +332,11 @@ function TextCell({
   );
 }
 
+function fitNote(element: HTMLTextAreaElement) {
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
 function AreaCell({
   name,
   value,
@@ -341,10 +346,16 @@ function AreaCell({
   value: string | null;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (ref.current) fitNote(ref.current);
+  }, [value]);
   return (
     <textarea
+      ref={ref}
       rows={2}
       defaultValue={value ?? ""}
+      onInput={(event) => fitNote(event.currentTarget)}
       onBlur={(event) => {
         const next = event.target.value.trim();
         if (next === (value ?? "")) return;
