@@ -105,7 +105,7 @@ function PedidosHead({ ana }: { ana: boolean }) {
       <th className="check" title="CPF vinculado">CPF</th>
       <th className="check" title="Taxa paga">Taxa</th>
       <th className="check">Entregue</th>
-      <th>Obs</th>
+      <th>Obs internas</th>
     </>
   );
 }
@@ -150,11 +150,7 @@ function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; ret
         <CheckCell name="delivered" checked={row.delivered} onSave={save.run} />
       </td>
       <td className="wide">
-        <AreaCell
-          name="notes_human"
-          value={sheetNote(row)}
-          onSave={(patch) => save.run({ ...patch, notes_robot: "" })}
-        />
+        <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} />
       </td>
     </>
   );
@@ -291,21 +287,6 @@ function RastreioRow({ row }: { row: SheetOrder }) {
       </td>
     </>
   );
-}
-
-function sheetNote(row: SheetOrder) {
-  const human = (row.notes_human || "").trim();
-  const robot = (row.notes_robot || "").trim();
-  if (human && robot && human !== robot) return `${human}\n${robot}`;
-  return human || robot || trayObservation(row.notes_tray);
-}
-
-function trayObservation(value: string | null) {
-  return (value || "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .trim();
 }
 
 function OrderCell({ row, status, pin = false }: { row: SheetOrder; status: SaveStatus; pin?: boolean }) {
