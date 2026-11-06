@@ -14,8 +14,9 @@ const LINKS = [
   { href: "/calculadora", label: "Calculadora" },
 ];
 
-export function Nav({ scroll = false }: { scroll?: boolean }) {
+export function Nav({ scroll = false, admin = false }: { scroll?: boolean; admin?: boolean }) {
   const pathname = usePathname();
+  const links = admin ? [...LINKS, { href: "/usuarios", label: "Usuários" }] : LINKS;
   return (
     <nav
       className={
@@ -24,7 +25,7 @@ export function Nav({ scroll = false }: { scroll?: boolean }) {
           : "flex flex-wrap items-center justify-center gap-x-5 gap-y-2"
       }
     >
-      {LINKS.map((link) => {
+      {links.map((link) => {
         const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
         return (
           <Link

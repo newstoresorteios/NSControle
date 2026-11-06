@@ -1,16 +1,16 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { signOut } from "@/app/login/actions";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Logo } from "@/components/logo";
 import { Nav } from "@/components/nav";
 import { NavigationProgress } from "@/components/navigation-progress";
+import { UserMenu } from "@/components/user-menu";
 import { requireTeam } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
-  const { email } = await requireTeam();
+  const actor = await requireTeam();
   return (
     <div className="min-h-screen bg-paper text-ink">
       <div className="sticky top-0 z-20">
@@ -23,19 +23,17 @@ export default async function PainelLayout({ children }: { children: React.React
               <Logo height={24} />
             </Link>
             <div className="hidden min-w-0 flex-1 lg:block">
-              <Nav />
+              <Nav admin={actor.role === "admin"} />
             </div>
-            <form action={signOut} className="ml-auto flex items-center gap-3">
-              <span className="hidden max-w-52 truncate text-xs tracking-wide text-muted sm:inline">{email}</span>
-              <button className="secondary" type="submit">
-                Sair
-              </button>
-            </form>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="hidden max-w-52 truncate text-xs tracking-wide text-muted sm:inline">{actor.displayName}</span>
+              <UserMenu name={actor.displayName} />
+            </div>
           </div>
           <div className="relative border-t border-line lg:hidden">
             <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-white to-transparent" />
             <div className="mx-auto max-w-[1600px] px-4 sm:px-5">
-              <Nav scroll />
+              <Nav scroll admin={actor.role === "admin"} />
             </div>
           </div>
         </header>

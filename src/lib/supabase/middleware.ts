@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { USER_EMAIL_HEADER, USER_ID_HEADER } from "@/lib/request-user";
+import { SESSION_COOKIE, readSession } from "@/lib/session";
 
 export async function updateSession(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
@@ -32,11 +33,15 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const local = user?.id ? null : await readSession(request.cookies.get(SESSION_COOKIE)?.value);
+  const actor = user?.id && user.email
+    ? { id: user.id, email: user.email.toLowerCase() }
+    : local;
 
-  if (user?.id && user.email) {
+  if (actor) {
     try {
-      requestHeaders.set(USER_ID_HEADER, user.id);
-      requestHeaders.set(USER_EMAIL_HEADER, user.email.toLowerCase());
+      requestHeaders.set(USER_ID_HEADER, actor.id);
+      requestHeaders.set(USER_EMAIL_HEADER, actor.email);
       const forwarded = NextResponse.next({ request: { headers: requestHeaders } });
       for (const cookie of supabaseResponse.headers.getSetCookie()) {
         forwarded.headers.append("set-cookie", cookie);
@@ -50,7 +55,7 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isPublic = path.startsWith("/login") || path.startsWith("/api/tray/sync") || path === '/integracao';
 
-  if (!user && !isPublic) {
+  if (!actor && !isPublic) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     return NextResponse.redirect(redirectUrl);

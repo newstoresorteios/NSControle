@@ -19,6 +19,10 @@ create table if not exists public.ctl_allowed_emails (
 create table if not exists public.ctl_team_members (
   user_id uuid primary key,
   email text not null unique,
+  username text unique,
+  display_name text,
+  role text not null default 'membro' check (role in ('admin', 'membro')),
+  password_hash text,
   created_at timestamptz not null default now()
 );
 
