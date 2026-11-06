@@ -2,7 +2,7 @@ import { signIn } from "@/app/login/actions";
 import { Logo } from "@/components/logo";
 
 const MESSAGES: Record<string, string> = {
-  credencial: "E-mail ou senha não conferem.",
+  credencial: "Usuário ou senha não conferem.",
   acesso: "Esse usuário não está liberado no time do controle.",
   plataforma: "Seu acesso é à plataforma Europa. Utilize o endereço próprio da plataforma.",
 };
@@ -41,8 +41,8 @@ export default async function LoginPage({
           ) : (
             <form action={signIn} className="mt-8 grid gap-4">
               <label className="grid gap-1.5">
-                E-mail
-                <input name="email" type="email" autoComplete="username" required />
+                Usuário
+                <input name="login" type="text" autoComplete="username" required />
               </label>
               <label className="grid gap-1.5">
                 Senha
