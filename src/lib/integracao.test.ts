@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANA_PURCHASE_FIELDS, anaPurchasePatch, anaPurchaseVisible, chooseDeliveryAddress, customerCard, eligibleOrder, pdfInvoice, trayRecipient, recipientValid, transitionAllowed } from './integracao.ts';
+import { ANA_PURCHASE_FIELDS, anaPurchasePatch, anaPurchaseVisible, chooseDeliveryAddress, customerCard, eligibleOrder, pdfInvoice, trayOrderRef, trayRecipient, recipientValid, transitionAllowed } from './integracao.ts';
 
 test('apenas pedidos a enviar sem entrega ou rastreio podem ser reservados',()=>{
   const order = {commercial_status:'A ENVIAR',delivered:false,tracking_code:null};
@@ -36,6 +36,11 @@ test('destinatário usa endereço de entrega e detecta dados incompletos',()=>{
   assert.equal(card?.city, 'Natal/RN');
   assert.equal(card?.postalCode, '59000-000');
   assert.equal(customerCard(null), null);
+});
+test('pedido sem prefixo da segunda loja usa a loja e o cliente da nota', () => {
+  assert.deepEqual(trayOrderRef('507', 'BI · 1490060:831 · Sedex'), { store: '1490060', id: '507', customerId: '831' });
+  assert.deepEqual(trayOrderRef('1490060:507', 'BI · 1490060:831 · Sedex'), { store: '1490060', id: '507', customerId: '831' });
+  assert.deepEqual(trayOrderRef('26818', 'BI · Maria · Natal · Sedex'), { store: '', id: '26818', customerId: '' });
 });
 test('o endereço de entrega prevalece sobre o de cobrança', () => {
   const chosen = chooseDeliveryAddress({

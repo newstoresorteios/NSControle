@@ -73,6 +73,19 @@ function addressRank(row: Record<string, unknown>) {
   return 1;
 }
 
+export function trayOrderRef(orderKey: string, hint = ""): { store: string; id: string; customerId: string } | null {
+  const key = orderKey.trim();
+  const hinted = /\b(\d{6,}):(\d+)\b/.exec(hint);
+  const prefixed = /^(\d{6,}):(\d+)$/.exec(key);
+  if (prefixed) {
+    const customerId = hinted && hinted[1] === prefixed[1] ? hinted[2] : "";
+    return { store: prefixed[1], id: prefixed[2], customerId };
+  }
+  if (!/^\d+$/.test(key)) return null;
+  if (!hinted || hinted[1] === key) return { store: "", id: key, customerId: "" };
+  return { store: hinted[1], id: key, customerId: hinted[2] };
+}
+
 export function chooseDeliveryAddress(payload: unknown): Partial<Recipient> | null {
   const root = record(payload);
   const list = Array.isArray(root.addresses) ? root.addresses : [];

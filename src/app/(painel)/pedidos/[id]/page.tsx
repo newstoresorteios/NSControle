@@ -31,7 +31,7 @@ export default async function PedidoPage({
   ]);
   const order = found[0];
   if (!order) notFound();
-  const customer = await ensureOrderCustomer(order.id, String(order.order_key ?? ""));
+  const customer = await ensureOrderCustomer(order.id, String(order.order_key ?? ""), `${order.label ?? ""} ${order.notes_tray ?? ""}`);
   const monthValue = order.finance_month ? String(order.finance_month).slice(0, 7) : "";
 
   return (
