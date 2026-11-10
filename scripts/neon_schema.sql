@@ -115,7 +115,7 @@ create table if not exists public.ctl_intermediation_notes (
   purchased boolean not null default false,
   tracking_code text,
   purchase_amount numeric(14,2),
-  payment_fee numeric(14,2),
+  payment_fee numeric(14,2), -- coluna Taxa da planilha: é a alfândega, não a taxa da máquina
   shipping_cost numeric(14,2),
   gain_amount numeric(14,2),
   settled boolean,

@@ -322,6 +322,7 @@ class Importer:
             "notas_preenchimentos": {
                 "purchase_amount": 0,
                 "payment_fee": 0,
+                "import_tax": 0,
                 "shipping_cost": 0,
                 "pedidos_tocados": 0,
             },
@@ -776,9 +777,10 @@ class Importer:
             if tracking and not order.get("tracking_code"):
                 order["tracking_code"] = tracking
             # Only fill empty money fields — never overwrite Financeiro / prior notas / Tray values.
+            # A coluna Taxa da nota é a alfândega, não a taxa da máquina.
             for field, index in (
                 ("purchase_amount", 4),
-                ("payment_fee", 5),
+                ("import_tax", 5),
                 ("shipping_cost", 6),
             ):
                 amount = parse_money(cell(row, index))
