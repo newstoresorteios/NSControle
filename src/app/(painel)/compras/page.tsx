@@ -92,7 +92,7 @@ export default async function ComprasPage({
                       <label className="grid gap-1 text-sm">Nota de entrada<select name="invoice_received" defaultValue={String(item.invoice_received)}><option value="false">Não</option><option value="true">Sim</option></select></label>
                       <label className="grid gap-1 text-sm">Entregue<select name="delivered" defaultValue={String(item.delivered)}><option value="false">Não</option><option value="true">Sim</option></select></label>
                       <p className="text-xs text-muted">Alterar o código atualiza o vínculo com o pedido quando houver correspondência única. O vínculo com estoque permanece.</p>
-                      <button type="submit">Salvar</button>
+                      <button className="ok" type="submit">Salvar</button>
                     </form>
                   </details>
                 </td>

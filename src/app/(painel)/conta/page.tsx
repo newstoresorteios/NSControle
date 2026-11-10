@@ -27,7 +27,7 @@ export default async function ContaPage({
         <label className="grid gap-1">Senha atual<input name="current" type="password" autoComplete="current-password" required /></label>
         <label className="grid gap-1">Nova senha<input name="next" type="password" autoComplete="new-password" required minLength={6} maxLength={72} /></label>
         <label className="grid gap-1">Confirmar nova senha<input name="confirm" type="password" autoComplete="new-password" required minLength={6} maxLength={72} /></label>
-        <button className="w-fit" type="submit">Salvar senha</button>
+        <button className="ok w-fit" type="submit">Salvar senha</button>
       </form>
     </div>
   );

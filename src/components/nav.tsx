@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/", label: "Início" },
   { href: "/pedidos", label: "Pedidos" },
   { href: "/financeiro", label: "Financeiro" },
+  { href: "/intermediacao", label: "Intermediação" },
   { href: "/pagamentos", label: "Pagamentos" },
   { href: "/estoque", label: "Estoque" },
   { href: "/compras", label: "Compras" },
@@ -31,8 +32,8 @@ export function Nav({ scroll = false, admin = false }: { scroll?: boolean; admin
           <Link
             key={link.href}
             href={link.href}
-            className={`shrink-0 border-b-2 px-0.5 py-1 text-[12px] uppercase tracking-[0.14em] text-ink ${
-              active ? "border-ink font-medium" : "border-transparent font-light hover:border-line"
+            className={`shrink-0 border-b-2 px-0.5 py-1 text-[12px] uppercase tracking-[0.14em] ${
+              active ? "border-brand font-medium text-brand" : "border-transparent font-light text-ink hover:border-brand/40 hover:text-brand"
             }`}
           >
             {link.label}

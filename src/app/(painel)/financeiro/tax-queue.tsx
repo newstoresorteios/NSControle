@@ -36,7 +36,7 @@ export async function TaxQueue({ status, error, ok }: { status?: string; error?:
       {ok ? <p className="text-sm text-ok">Lançamento salvo.</p> : null}
       <form action={markOrderTaxed} className="card flex flex-wrap items-end gap-3">
         <label className="grid min-w-60 gap-1 text-sm">Pedido ou rastreio<input name="lookup" required /></label>
-        <button type="submit">Confirmar cobrança</button>
+        <button className="ok" type="submit">Confirmar cobrança</button>
       </form>
       <nav className="flex flex-wrap gap-2">
         {filters.map((filter) => <Link key={filter.key} className="button secondary" href={`/financeiro?aba=taxas${filter.key ? `&status=${filter.key}` : ""}`}>{filter.label}</Link>)}
@@ -56,7 +56,7 @@ export async function TaxQueue({ status, error, ok }: { status?: string; error?:
                   <form action={saveOrderImportTax} className="flex min-w-48 gap-2">
                     <input type="hidden" name="id" value={order.id} />
                     <input aria-label={`Taxa do pedido ${order.order_key}`} name="import_tax" defaultValue={order.import_tax ?? ""} placeholder="Não informado" />
-                    <button type="submit">Salvar</button>
+                    <button className="ok" type="submit">Salvar</button>
                   </form>
                   {order.import_tax != null ? <span className="text-xs text-muted">Atual: {brl(order.import_tax)}</span> : null}
                 </td>
@@ -64,7 +64,7 @@ export async function TaxQueue({ status, error, ok }: { status?: string; error?:
                   <form action={setOrderTaxPaid}>
                     <input type="hidden" name="id" value={order.id} />
                     <input type="hidden" name="tax_paid" value={String(!order.tax_paid)} />
-                    <button className="secondary" type="submit">{order.tax_paid ? "Marcar não paga" : "Confirmar pagamento"}</button>
+                    <button className={order.tax_paid ? "no" : "ok"} type="submit">{order.tax_paid ? "Marcar não paga" : "Confirmar pagamento"}</button>
                   </form>
                 </td>
               </tr>;
