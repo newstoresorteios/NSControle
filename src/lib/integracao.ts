@@ -1,6 +1,7 @@
 export type Recipient = {
   name: string; address: string; number: string; complement: string;
   city: string; state: string; postal_code: string; country: string; phone: string; tax_id: string;
+  email: string; neighborhood: string;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -20,8 +21,82 @@ export function trayRecipient(payload: Record<string, unknown>): Recipient {
     state: pick(address, 'state'), postal_code: pick(address, 'zip_code', 'zipcode', 'postal_code', 'cep'),
     country: pick(address, 'country', 'country_code') || 'BR',
     phone: pick(customer, 'cellphone', 'phone'), tax_id: pick(customer, 'cpf', 'cnpj'),
+    email: pick(customer, 'email'), neighborhood: pick(address, 'neighborhood', 'district', 'bairro'),
   };
 }
+export type CustomerCard = {
+  name: string;
+  taxId: string;
+  email: string;
+  phone: string;
+  street: string;
+  neighborhood: string;
+  city: string;
+  postalCode: string;
+};
+
+export function formatDocument(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 11) return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  if (digits.length === 14) return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  return value.trim();
+}
+
+export function formatCep(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 8) return digits.replace(/(\d{5})(\d{3})/, "$1-$2");
+  return value.trim();
+}
+
+export function customerCard(recipient: Partial<Recipient> | null | undefined): CustomerCard | null {
+  if (!recipient) return null;
+  const street = [recipient.address, recipient.number].map((part) => part?.trim()).filter(Boolean).join(", ");
+  const streetLine = [street, recipient.complement?.trim()].filter(Boolean).join(" · ");
+  const city = [recipient.city, recipient.state].map((part) => part?.trim()).filter(Boolean).join("/");
+  const card: CustomerCard = {
+    name: recipient.name?.trim() ?? "",
+    taxId: formatDocument(recipient.tax_id ?? ""),
+    email: recipient.email?.trim() ?? "",
+    phone: recipient.phone?.trim() ?? "",
+    street: streetLine,
+    neighborhood: recipient.neighborhood?.trim() ?? "",
+    city,
+    postalCode: formatCep(recipient.postal_code ?? ""),
+  };
+  return Object.values(card).some(Boolean) ? card : null;
+}
+
+function addressRank(row: Record<string, unknown>) {
+  const type = String(row.type ?? "").trim().toLowerCase();
+  if (type === "1" || type === "delivery" || type === "entrega") return 2;
+  if (type === "0" || type === "billing" || type === "cobranca" || type === "cobrança") return 0;
+  return 1;
+}
+
+export function chooseDeliveryAddress(payload: unknown): Partial<Recipient> | null {
+  const root = record(payload);
+  const list = Array.isArray(root.addresses) ? root.addresses : [];
+  const chosen = list
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .sort((a, b) => addressRank(b) - addressRank(a))
+    .find((row) => pick(row, "address", "street"));
+  if (!chosen) return null;
+  return {
+    name: pick(chosen, "recipient", "name"),
+    address: pick(chosen, "address", "street"),
+    number: pick(chosen, "number", "house_number"),
+    complement: pick(chosen, "complement", "address_2"),
+    neighborhood: pick(chosen, "neighborhood", "district", "bairro"),
+    city: pick(chosen, "city"),
+    state: pick(chosen, "state"),
+    postal_code: pick(chosen, "zip_code", "zipcode", "postal_code", "cep"),
+    country: pick(chosen, "country", "country_code") || "BR",
+    phone: pick(chosen, "cellphone", "phone"),
+    tax_id: "",
+    email: "",
+  };
+}
+
 export function recipientValid(value: Recipient): boolean {
   return ['name','address','number','city','state','postal_code','country','phone','tax_id']
     .every(key => Boolean(value[key as keyof Recipient]?.trim()));
