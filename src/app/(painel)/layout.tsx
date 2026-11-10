@@ -17,7 +17,7 @@ export default async function PainelLayout({ children }: { children: React.React
         <div className="bg-ink px-4 py-1.5 text-center text-[11px] font-medium uppercase tracking-[0.22em] text-white">
           New Store · Controle interno
         </div>
-        <header className="border-b border-line bg-white">
+        <header className="border-b-[3px] border-brand bg-white">
           <div className="mx-auto flex max-w-[1600px] items-center gap-x-8 px-4 py-3 sm:px-5">
             <Link href="/" aria-label="Início" className="shrink-0">
               <Logo height={24} />

@@ -196,7 +196,7 @@ export default async function FinanceiroPage({
       </nav>
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <article className="card stat">
+        <article className="card stat stat-sale">
           <p className="kicker">Venda</p>
           <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.vendas)}</p>
           <p className="mt-1 text-sm text-muted">
@@ -204,12 +204,12 @@ export default async function FinanceiroPage({
             Loja, encomenda e créditos entram no total.
           </p>
         </article>
-        <article className="card stat">
+        <article className="card stat stat-cost">
           <p className="kicker">Custo</p>
           <p className="num mt-2 text-3xl font-medium tracking-tight text-danger">{brl(summary.custoTotal)}</p>
           <p className="mt-1 text-sm text-muted">Compra, envio, alfândega e taxa da máquina.</p>
         </article>
-        <article className="card stat">
+        <article className="card stat stat-profit">
           <p className="kicker">Lucro</p>
           <p className={`num mt-2 text-3xl font-medium tracking-tight ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
             {brl(summary.resultado)}

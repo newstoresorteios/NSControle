@@ -128,8 +128,8 @@ export default async function EstoquePage({
                           <label className="grid gap-1 text-sm">Compra<input name="purchased_at" type="date" defaultValue={item.purchased_at ? String(item.purchased_at).slice(0, 10) : ""} /></label>
                           <label className="grid gap-1 text-sm md:col-span-2">Observações<textarea name="notes" defaultValue={item.notes ?? ""} rows={3} /></label>
                           <div className="flex flex-wrap gap-2 md:col-span-2">
-                            <button type="submit">Salvar alterações</button>
-                            <Link className="button secondary" href="/estoque#lista-estoque">Cancelar</Link>
+                            <button className="ok" type="submit">Salvar alterações</button>
+                            <Link className="button no" href="/estoque#lista-estoque">Cancelar</Link>
                           </div>
                         </form>
                       </section>

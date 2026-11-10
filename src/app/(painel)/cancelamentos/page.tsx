@@ -89,7 +89,7 @@ export default async function CancelamentosPage({
                       <label className="grid gap-1 text-sm">Devolvido em<input name="done_date" type="date" defaultValue={item.done_date ? String(item.done_date).slice(0, 10) : ""} /></label>
                       <label className="grid gap-1 text-sm">Dados bancários<input name="bank_details" defaultValue={item.bank_details ?? ""} /></label>
                       <label className="grid gap-1 text-sm">Motivo<input name="reason" defaultValue={item.reason ?? ""} /></label>
-                      <button type="submit">Salvar</button>
+                      <button className="ok" type="submit">Salvar</button>
                     </form>
                   </details>
                 </td>

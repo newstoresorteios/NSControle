@@ -40,6 +40,15 @@ export type SheetOrder = {
 
 const COMMERCIAL = ["AGUARDANDO PAGAMENTO", "A ENVIAR VINDI", "A ENVIAR", "ENVIADO", "FINALIZADO", "ENTREGUE", "CANCELADO"];
 
+function listTone(status: string | null, delivered = false) {
+  const value = (status || "").toUpperCase();
+  if (value === "CANCELADO") return "danger";
+  if (delivered || value === "ENTREGUE" || value === "FINALIZADO") return "ok";
+  if (value === "ENVIADO" || value.includes("ENVIAR")) return "info";
+  if (value.includes("AGUARD")) return "warn";
+  return "";
+}
+
 export function OrderSheet({
   rows,
   mode,
@@ -64,7 +73,7 @@ export function OrderSheet({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id}>
+            <tr key={row.id} data-tone={listTone(row.commercial_status, row.delivered) || undefined}>
               {mode === "acompanhamento" ? <AcompanhamentoRow row={row} /> : null}
               {mode === "rastreio" ? <RastreioRow row={row} /> : null}
               {mode === "pedidos" || mode === "entregues" ? <PedidosRow row={row} ana={ana} returnTo={returnTo} /> : null}
@@ -176,9 +185,9 @@ function AcompanhamentoHead() {
 
 function AcompanhamentoRow({ row }: { row: SheetOrder }) {
   const save = useSave(row.id);
-  const statuses = row.commercial_status && !COMMERCIAL.includes(row.commercial_status)
-    ? [row.commercial_status, ...COMMERCIAL]
-    : COMMERCIAL;
+  const [status, setStatus] = useState(row.commercial_status ?? "");
+  const statuses = status && !COMMERCIAL.includes(status) ? [status, ...COMMERCIAL] : COMMERCIAL;
+  const tone = listTone(status, row.delivered);
   return (
     <>
       <OrderCell row={row} status={save.status} />
@@ -190,10 +199,13 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
       </td>
       <td className="wide">
         <select
-          defaultValue={row.commercial_status ?? ""}
+          className={tone ? `tone-${tone}` : undefined}
+          value={status}
           onChange={(event) => {
-            if (event.target.value === (row.commercial_status ?? "")) return;
-            save.run({ commercial_status: event.target.value });
+            const next = event.target.value;
+            setStatus(next);
+            if (next === (row.commercial_status ?? "")) return;
+            save.run({ commercial_status: next });
           }}
         >
           <option value="">—</option>
@@ -393,9 +405,9 @@ function RequestAna({ id, orderKey, returnTo }: { id: string; orderKey: string; 
               <form action={requestAnaPurchase}>
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="retorno" value={returnTo} />
-                <button type="submit">Sim</button>
+                <button className="ok" type="submit">Sim</button>
               </form>
-              <button className="secondary" type="button" onClick={() => setOpen(false)}>Não</button>
+              <button className="no" type="button" onClick={() => setOpen(false)}>Não</button>
             </div>
           </div>
         </div>,
@@ -418,7 +430,7 @@ function PayTaxButton({ text }: { text: string }) {
   }, [open]);
   return (
     <>
-      <button className="secondary" type="button" onClick={() => { setCopied(false); setOpen(true); }}>Pagar taxa</button>
+      <button className="warn" type="button" onClick={() => { setCopied(false); setOpen(true); }}>Pagar taxa</button>
       {open ? createPortal(
         <div className="confirm-backdrop" onMouseDown={() => setOpen(false)}>
           <div

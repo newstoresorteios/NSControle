@@ -83,7 +83,7 @@ export default async function UsuariosPage({
                       <label className="grid min-w-40 flex-1 gap-1">Nova senha
                         <input name="password" type="text" placeholder={user.local ? "Manter a atual" : "Pelo ícone do usuário"} disabled={!user.local} maxLength={72} />
                       </label>
-                      <button type="submit">Salvar</button>
+                      <button className="ok" type="submit">Salvar</button>
                       {own ? null : <DeleteUser id={user.user_id} name={user.display_name || login} />}
                     </form>
                   </td>

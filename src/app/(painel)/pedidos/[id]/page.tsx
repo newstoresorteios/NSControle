@@ -135,7 +135,7 @@ export default async function PedidoPage({
           Observações humanas
           <textarea name="notes_human" defaultValue={order.notes_human || ""} />
         </label>
-        <button type="submit" className="md:w-fit">
+        <button type="submit" className="ok md:w-fit">
           Salvar ficha
         </button>
       </form>

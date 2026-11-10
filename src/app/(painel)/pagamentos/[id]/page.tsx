@@ -260,7 +260,7 @@ export default async function PagamentoPage({
           rateada entre os itens. Se corrigir a referência, use Buscar pedidos de novo.
         </p>
         <div className="flex flex-wrap gap-3">
-          <button type="submit" name="intent" value="confirmar">
+          <button className="ok" type="submit" name="intent" value="confirmar">
             Confirmar vínculos
           </button>
           <button type="submit" name="intent" value="rascunho" className="secondary">
@@ -281,7 +281,7 @@ export default async function PagamentoPage({
         <summary className="section-title">Excluir fatura</summary>
         <form action={deleteInvoice} className="mt-3">
           <input type="hidden" name="id" value={invoice.id} />
-          <button type="submit" className="secondary">
+          <button type="submit" className="danger">
             Excluir
           </button>
         </form>
