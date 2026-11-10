@@ -4,6 +4,7 @@ import { updateOrder } from "@/app/(painel)/pedidos/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl, money, shortDate } from "@/lib/format";
+import { ensureOrderCustomer, type CustomerCard } from "@/lib/order-customer";
 
 export default async function PedidoPage({
   params,
@@ -30,6 +31,7 @@ export default async function PedidoPage({
   ]);
   const order = found[0];
   if (!order) notFound();
+  const customer = await ensureOrderCustomer(order.id, String(order.order_key ?? ""));
   const monthValue = order.finance_month ? String(order.finance_month).slice(0, 7) : "";
 
   return (
@@ -44,6 +46,7 @@ export default async function PedidoPage({
       </div>
       {query.ok ? <p className="text-sm text-ok">Ficha atualizada.</p> : null}
       {query.erro ? <p className="text-sm text-danger">Não foi possível salvar.</p> : null}
+      <CustomerSection card={customer} />
       {order.notes_tray ? (
         <section className="card text-sm">
           <h2 className="section-title">Loja</h2>
@@ -137,6 +140,38 @@ export default async function PedidoPage({
         </button>
       </form>
     </div>
+  );
+}
+
+function CustomerSection({ card }: { card: CustomerCard | null }) {
+  const rows = card
+    ? ([
+        ["Nome", card.name],
+        ["CPF/CNPJ", card.taxId],
+        ["E-mail", card.email],
+        ["Telefone", card.phone],
+        ["Endereço", card.street],
+        ["Bairro", card.neighborhood],
+        ["Cidade", card.city],
+        ["CEP", card.postalCode],
+      ] as const).filter(([, value]) => value)
+    : [];
+  return (
+    <section className="card text-sm">
+      <h2 className="section-title">Cliente</h2>
+      {rows.length ? (
+        <dl className="mt-3 grid gap-3 md:grid-cols-3">
+          {rows.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-muted">{label}</dt>
+              <dd className="mt-1">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="mt-2 text-muted">Ainda não há nome, documento ou endereço deste cliente.</p>
+      )}
+    </section>
   );
 }
 

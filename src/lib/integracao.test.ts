@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANA_PURCHASE_FIELDS, anaPurchasePatch, anaPurchaseVisible, eligibleOrder, pdfInvoice, trayRecipient, recipientValid, transitionAllowed } from './integracao.ts';
+import { ANA_PURCHASE_FIELDS, anaPurchasePatch, anaPurchaseVisible, customerCard, eligibleOrder, pdfInvoice, trayRecipient, recipientValid, transitionAllowed } from './integracao.ts';
 
 test('apenas pedidos a enviar sem entrega ou rastreio podem ser reservados',()=>{
   const order = {commercial_status:'A ENVIAR',delivered:false,tracking_code:null};
@@ -22,6 +22,20 @@ test('destinatário usa endereço de entrega e detecta dados incompletos',()=>{
   assert.equal(recipientValid(recipient),true);
   assert.equal(recipientValid({...recipient,tax_id:''}),false);
   assert.equal(recipientValid(trayRecipient({})),false);
+  const ficha = trayRecipient({
+    customer: { name: 'Lazaro', cnpj: '12345678000190', email: 'lazaro@loja.com', cellphone: '84996023618' },
+    address: { address: 'Rua A', number: '10', complement: 'casa', neighborhood: 'Centro', city: 'Natal', state: 'RN', zip_code: '59000000' },
+  });
+  assert.equal(ficha.tax_id, '12345678000190');
+  assert.equal(ficha.email, 'lazaro@loja.com');
+  assert.equal(ficha.neighborhood, 'Centro');
+  const card = customerCard(ficha);
+  assert.equal(card?.name, 'Lazaro');
+  assert.equal(card?.taxId, '12.345.678/0001-90');
+  assert.equal(card?.street, 'Rua A, 10 · casa');
+  assert.equal(card?.city, 'Natal/RN');
+  assert.equal(card?.postalCode, '59000-000');
+  assert.equal(customerCard(null), null);
 });
 test('a Ana vê qualquer pedido solicitado, e nenhum que não foi pedido', () => {
   assert.equal(anaPurchaseVisible({ requested: true }), true);
