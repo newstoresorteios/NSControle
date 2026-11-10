@@ -66,6 +66,37 @@ export function customerCard(recipient: Partial<Recipient> | null | undefined): 
   return Object.values(card).some(Boolean) ? card : null;
 }
 
+function addressRank(row: Record<string, unknown>) {
+  const type = String(row.type ?? "").trim().toLowerCase();
+  if (type === "1" || type === "delivery" || type === "entrega") return 2;
+  if (type === "0" || type === "billing" || type === "cobranca" || type === "cobrança") return 0;
+  return 1;
+}
+
+export function chooseDeliveryAddress(payload: unknown): Partial<Recipient> | null {
+  const root = record(payload);
+  const list = Array.isArray(root.addresses) ? root.addresses : [];
+  const chosen = list
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .sort((a, b) => addressRank(b) - addressRank(a))
+    .find((row) => pick(row, "address", "street"));
+  if (!chosen) return null;
+  return {
+    name: pick(chosen, "recipient", "name"),
+    address: pick(chosen, "address", "street"),
+    number: pick(chosen, "number", "house_number"),
+    complement: pick(chosen, "complement", "address_2"),
+    neighborhood: pick(chosen, "neighborhood", "district", "bairro"),
+    city: pick(chosen, "city"),
+    state: pick(chosen, "state"),
+    postal_code: pick(chosen, "zip_code", "zipcode", "postal_code", "cep"),
+    country: pick(chosen, "country", "country_code") || "BR",
+    phone: pick(chosen, "cellphone", "phone"),
+    tax_id: "",
+    email: "",
+  };
+}
+
 export function recipientValid(value: Recipient): boolean {
   return ['name','address','number','city','state','postal_code','country','phone','tax_id']
     .every(key => Boolean(value[key as keyof Recipient]?.trim()));

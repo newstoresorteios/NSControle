@@ -4,7 +4,7 @@ import { updateOrder } from "@/app/(painel)/pedidos/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl, money, shortDate } from "@/lib/format";
-import { ensureOrderCustomer, type CustomerCard } from "@/lib/order-customer";
+import { ensureOrderCustomer, type OrderCustomer } from "@/lib/order-customer";
 
 export default async function PedidoPage({
   params,
@@ -46,7 +46,7 @@ export default async function PedidoPage({
       </div>
       {query.ok ? <p className="text-sm text-ok">Ficha atualizada.</p> : null}
       {query.erro ? <p className="text-sm text-danger">Não foi possível salvar.</p> : null}
-      <CustomerSection card={customer} />
+      <CustomerSection card={customer} tracking={customer?.tracking || order.tracking_code || ""} />
       {order.notes_tray ? (
         <section className="card text-sm">
           <h2 className="section-title">Loja</h2>
@@ -143,7 +143,7 @@ export default async function PedidoPage({
   );
 }
 
-function CustomerSection({ card }: { card: CustomerCard | null }) {
+function CustomerSection({ card, tracking }: { card: OrderCustomer | null; tracking: string }) {
   const rows = card
     ? ([
         ["Nome", card.name],
@@ -154,11 +154,15 @@ function CustomerSection({ card }: { card: CustomerCard | null }) {
         ["Bairro", card.neighborhood],
         ["Cidade", card.city],
         ["CEP", card.postalCode],
+        ["Frete", card.shipment],
+        ["Rastreio", tracking],
       ] as const).filter(([, value]) => value)
-    : [];
+    : tracking
+      ? ([["Rastreio", tracking]] as const)
+      : [];
   return (
     <section className="card text-sm">
-      <h2 className="section-title">Cliente</h2>
+      <h2 className="section-title">Cliente e envio</h2>
       {rows.length ? (
         <dl className="mt-3 grid gap-3 md:grid-cols-3">
           {rows.map(([label, value]) => (
@@ -169,7 +173,7 @@ function CustomerSection({ card }: { card: CustomerCard | null }) {
           ))}
         </dl>
       ) : (
-        <p className="mt-2 text-muted">Ainda não há nome, documento ou endereço deste cliente.</p>
+        <p className="mt-2 text-muted">Ainda não há nome, endereço ou rastreio deste pedido.</p>
       )}
     </section>
   );

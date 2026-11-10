@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANA_PURCHASE_FIELDS, anaPurchasePatch, anaPurchaseVisible, customerCard, eligibleOrder, pdfInvoice, trayRecipient, recipientValid, transitionAllowed } from './integracao.ts';
+import { ANA_PURCHASE_FIELDS, anaPurchasePatch, anaPurchaseVisible, chooseDeliveryAddress, customerCard, eligibleOrder, pdfInvoice, trayRecipient, recipientValid, transitionAllowed } from './integracao.ts';
 
 test('apenas pedidos a enviar sem entrega ou rastreio podem ser reservados',()=>{
   const order = {commercial_status:'A ENVIAR',delivered:false,tracking_code:null};
@@ -36,6 +36,19 @@ test('destinatário usa endereço de entrega e detecta dados incompletos',()=>{
   assert.equal(card?.city, 'Natal/RN');
   assert.equal(card?.postalCode, '59000-000');
   assert.equal(customerCard(null), null);
+});
+test('o endereço de entrega prevalece sobre o de cobrança', () => {
+  const chosen = chooseDeliveryAddress({
+    addresses: [
+      { type: '0', address: 'Rua Cobranca', number: '1', city: 'Rio', state: 'RJ', zip_code: '20000000' },
+      { type: '1', recipient: 'Ana', address: 'Rua Entrega', number: '20', neighborhood: 'Centro', city: 'Natal', state: 'RN', zip_code: '59000000' },
+    ],
+  });
+  assert.equal(chosen?.address, 'Rua Entrega');
+  assert.equal(chosen?.name, 'Ana');
+  assert.equal(chosen?.neighborhood, 'Centro');
+  assert.equal(chosen?.postal_code, '59000000');
+  assert.equal(chooseDeliveryAddress({ addresses: [{ type: '1', city: 'Natal' }] }), null);
 });
 test('a Ana vê qualquer pedido solicitado, e nenhum que não foi pedido', () => {
   assert.equal(anaPurchaseVisible({ requested: true }), true);
