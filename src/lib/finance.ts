@@ -4,13 +4,24 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
+export const PRIMARY_STORE = "687890";
+
 export type MoneyOrder = {
   flow: string;
+  order_key?: string | null;
+  label?: string | null;
   sale_amount: unknown;
   purchase_amount: unknown;
   payment_fee: unknown;
   shipping_cost: unknown;
   import_tax: unknown;
+};
+
+export type FinanceSlice = {
+  key: string;
+  label: string;
+  orders: number;
+  summary: MonthSummary;
 };
 
 export type MonthSummary = {
@@ -128,4 +139,48 @@ export function monthSummary(
     elapsed,
     daysInMonth,
   };
+}
+
+const EXTRA_FLOW: Record<string, string> = {
+  encomenda: "Sob encomenda",
+  ns_creditos: "NS Créditos",
+};
+
+export function financeSlices(
+  orders: MoneyOrder[],
+  month: string,
+  today = new Date(),
+): FinanceSlice[] {
+  const buckets = new Map<string, { label: string; rows: MoneyOrder[] }>();
+  const put = (key: string, label: string, order: MoneyOrder) => {
+    const bucket = buckets.get(key) ?? { label, rows: [] };
+    bucket.rows.push(order);
+    buckets.set(key, bucket);
+  };
+  for (const order of orders) {
+    if (order.flow === "loja_nova") {
+      const key = String(order.order_key ?? "");
+      const detected = key ? trayStoreOf({ order_key: key, label: order.label }) : null;
+      const prefixed = /^(\d{6,}):/.exec(key);
+      const store = detected ?? prefixed?.[1] ?? PRIMARY_STORE;
+      put(store, store, order);
+      continue;
+    }
+    put(`flow:${order.flow}`, EXTRA_FLOW[order.flow] ?? order.flow, order);
+  }
+  return [...buckets.entries()]
+    .map(([key, bucket]) => ({
+      key,
+      label: bucket.label,
+      orders: bucket.rows.filter((row) => asNumber(row.sale_amount) != null).length,
+      summary: monthSummary(bucket.rows, null, month, today),
+    }))
+    .sort((a, b) => {
+      if (a.key === PRIMARY_STORE) return -1;
+      if (b.key === PRIMARY_STORE) return 1;
+      const aStore = /^\d{6,}$/.test(a.key);
+      const bStore = /^\d{6,}$/.test(b.key);
+      if (aStore !== bStore) return aStore ? -1 : 1;
+      return a.label.localeCompare(b.label, "pt");
+    });
 }

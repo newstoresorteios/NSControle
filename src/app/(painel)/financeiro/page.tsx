@@ -2,7 +2,7 @@ import Link from "next/link";
 import { saveGoal } from "@/app/(painel)/financeiro/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { monthSummary, salesByTrayStore } from "@/lib/finance";
+import { financeSlices, monthSummary } from "@/lib/finance";
 import { estimateLucroReal } from "@/lib/finance-lucro-real";
 import { refundTotal } from "@/lib/refunds";
 import { TaxQueue } from "./tax-queue";
@@ -136,7 +136,11 @@ export default async function FinanceiroPage({
     where done_date >= ${monthDate} and done_date < ${monthEnd}
   `]);
   const summary = monthSummary(orders ?? [], asNumber(goal?.target_amount), selected);
-  const storeSales = salesByTrayStore(orders ?? []);
+  const slices = financeSlices(orders ?? [], selected);
+  const storeLine = slices
+    .filter((slice) => /^\d{6,}$/.test(slice.key))
+    .map((slice) => `${slice.label} ${brl(slice.summary.vendas)}`)
+    .join(" · ");
   const lucroReal = estimateLucroReal(orders ?? [], { icmsCreditFactor });
   const falta = gapOf(params.falta);
   const incomplete = (orders ?? []).filter((order) => {
@@ -196,7 +200,8 @@ export default async function FinanceiroPage({
           <p className="kicker">Venda</p>
           <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.vendas)}</p>
           <p className="mt-1 text-sm text-muted">
-            687890 {brl(storeSales["687890"])} · 1490060 {brl(storeSales["1490060"])}. Encomenda e créditos entram no total.
+            {storeLine ? `${storeLine}. ` : ""}
+            Loja, encomenda e créditos entram no total.
           </p>
         </article>
         <article className="card stat">
@@ -212,6 +217,49 @@ export default async function FinanceiroPage({
           <p className="mt-1 text-sm text-muted">Margem {percent(summary.margem)}. Vazio entra como zero.</p>
         </article>
       </section>
+
+      {slices.length ? (
+        <section className="card overflow-x-auto">
+          <h2 className="section-title">Por loja</h2>
+          <p className="mt-1 text-sm text-muted">
+            O quadro de cima é a soma. Cada linha repete venda, custo e lucro daquela parte.
+          </p>
+          <table className="mt-3">
+            <thead>
+              <tr>
+                <th>Loja</th>
+                <th>Pedidos</th>
+                <th>Venda</th>
+                <th>Custo</th>
+                <th>Lucro</th>
+                <th>Margem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {slices.map((slice) => (
+                <tr key={slice.key}>
+                  <td>{slice.label}</td>
+                  <td className="num">{slice.orders}</td>
+                  <td className="num">{brl(slice.summary.vendas)}</td>
+                  <td className="num text-danger">{brl(slice.summary.custoTotal)}</td>
+                  <td className={`num ${slice.summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
+                    {brl(slice.summary.resultado)}
+                  </td>
+                  <td className="num">{percent(slice.summary.margem)}</td>
+                </tr>
+              ))}
+              <tr>
+                <td>Soma</td>
+                <td className="num">{slices.reduce((total, slice) => total + slice.orders, 0)}</td>
+                <td className="num">{brl(summary.vendas)}</td>
+                <td className="num text-danger">{brl(summary.custoTotal)}</td>
+                <td className={`num ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(summary.resultado)}</td>
+                <td className="num">{percent(summary.margem)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-3">
         <GapCard

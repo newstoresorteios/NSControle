@@ -5,7 +5,7 @@ import { SyncButton, SyncStatus } from "@/components/sync-button";
 import { correiosConfigured } from "@/lib/correios-client";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { monthSummary } from "@/lib/finance";
+import { financeSlices, monthSummary } from "@/lib/finance";
 import { asNumber, brl, monthLabel, percent } from "@/lib/format";
 import { trayConfigured } from "@/lib/tray-client";
 
@@ -185,13 +185,15 @@ export default async function HomePage({
     `,
     sql<{
       flow: string;
+      order_key: string;
+      label: string | null;
       sale_amount: string | null;
       purchase_amount: string | null;
       payment_fee: string | null;
       shipping_cost: string | null;
       import_tax: string | null;
     }[]>`
-      select flow, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax
+      select flow, order_key, label, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax
       from ctl_orders
       where finance_month = ${monthDate}
     `,
@@ -203,6 +205,7 @@ export default async function HomePage({
   const trayResult = trayNotice(params.sync, params.pedidos);
   const correiosResult = correiosNotice(params.correios, params.rastreios);
   const summary = monthSummary(moneyRows ?? [], asNumber(goalRows[0]?.target_amount), month);
+  const slices = financeSlices(moneyRows ?? [], month);
 
   return (
     <div className="grid gap-6">
@@ -304,6 +307,7 @@ export default async function HomePage({
         <table>
           <thead>
             <tr>
+              <th>Loja</th>
               <th>Venda</th>
               <th>Custo</th>
               <th>Lucro</th>
@@ -314,6 +318,7 @@ export default async function HomePage({
           </thead>
           <tbody>
             <tr>
+              <td>Soma</td>
               <td className="num">{brl(summary.vendas)}</td>
               <td className="num">{brl(summary.custoTotal)}</td>
               <td className={`num ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(summary.resultado)}</td>
@@ -333,6 +338,19 @@ export default async function HomePage({
                 </Link>
               </td>
             </tr>
+            {slices.map((slice) => (
+              <tr key={slice.key}>
+                <td>{slice.label}</td>
+                <td className="num">{brl(slice.summary.vendas)}</td>
+                <td className="num">{brl(slice.summary.custoTotal)}</td>
+                <td className={`num ${slice.summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
+                  {brl(slice.summary.resultado)}
+                </td>
+                <td className={`num ${slice.summary.semCompra ? "text-danger" : ""}`}>{slice.summary.semCompra}</td>
+                <td className={`num ${slice.summary.semAlfandega ? "text-danger" : ""}`}>{slice.summary.semAlfandega}</td>
+                <td className={`num ${slice.summary.semEnvio ? "text-danger" : ""}`}>{slice.summary.semEnvio}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
         {summary.semCompra || summary.semAlfandega || summary.semEnvio ? (
