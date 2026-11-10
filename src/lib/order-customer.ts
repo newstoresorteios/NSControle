@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { chooseDeliveryAddress, customerCard, trayRecipient, type CustomerCard, type Recipient } from "@/lib/integracao";
+import { chooseDeliveryAddress, customerCard, trayOrderRef, trayRecipient, type CustomerCard, type Recipient } from "@/lib/integracao";
 import { trayConfigured, trayGet } from "@/lib/tray-client";
 
 export type { CustomerCard } from "@/lib/integracao";
@@ -20,29 +20,29 @@ function keepFilled(fresh: Recipient, stored: Partial<Recipient> | null): Recipi
   return merged;
 }
 
-function orderRef(orderKey: string) {
-  const prefixed = /^(\d{6,}):(\d+)$/.exec(orderKey);
-  if (prefixed) return { store: prefixed[1], id: prefixed[2] };
-  if (/^\d+$/.test(orderKey)) return { store: "", id: orderKey };
-  return null;
-}
-
 function text(value: unknown) {
   return value == null ? "" : String(value).trim();
 }
 
-async function recipientFromTray(orderKey: string, stored: Partial<Recipient> | null) {
-  const ref = orderRef(orderKey);
+function customerNumber(value: string, store: string) {
+  const prefixed = /^(\d{6,}):(\d+)$/.exec(value);
+  if (prefixed) return !store || prefixed[1] === store ? prefixed[2] : "";
+  return /^\d+$/.test(value) ? value : "";
+}
+
+async function recipientFromTray(orderKey: string, stored: Partial<Recipient> | null, hint = "") {
+  const ref = trayOrderRef(orderKey, hint);
   if (!ref || !trayConfigured()) return { recipient: stored, shipment: "", tracking: "" };
   const query = ref.store ? { store: ref.store } : undefined;
   const payload = await trayGet(`/internal/orders/${ref.id}/complete`, query);
   let fresh = keepFilled(trayRecipient(payload), stored);
   if (!fresh.address.trim()) {
     const customer = payload.customer;
-    const customerId = customer && typeof customer === "object" && !Array.isArray(customer)
+    const rawId = customer && typeof customer === "object" && !Array.isArray(customer)
       ? text((customer as Record<string, unknown>).id)
       : "";
-    if (/^\d+$/.test(customerId)) {
+    const customerId = customerNumber(rawId, ref.store) || customerNumber(ref.customerId, ref.store);
+    if (customerId) {
       const listed = await trayGet("/internal/customer-addresses", { customer_id: customerId, ...query });
       const extra = chooseDeliveryAddress(listed);
       if (extra?.address) fresh = keepFilled(extra as Recipient, fresh);
@@ -58,7 +58,7 @@ async function recipientFromTray(orderKey: string, stored: Partial<Recipient> | 
   };
 }
 
-export async function ensureOrderCustomer(orderId: string, orderKey: string): Promise<OrderCustomer | null> {
+export async function ensureOrderCustomer(orderId: string, orderKey: string, hint = ""): Promise<OrderCustomer | null> {
   const sql = db();
   const [stored] = await sql<{ recipient: Partial<Recipient> | null }[]>`
     select recipient from ctl_integration_order_data where order_id = ${orderId}
@@ -67,7 +67,7 @@ export async function ensureOrderCustomer(orderId: string, orderKey: string): Pr
   let shipment = "";
   let tracking = "";
   try {
-    const loaded = await recipientFromTray(orderKey, recipient);
+    const loaded = await recipientFromTray(orderKey, recipient, hint);
     shipment = loaded.shipment;
     tracking = loaded.tracking;
     const fresh = loaded.recipient;
