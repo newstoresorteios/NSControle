@@ -127,7 +127,8 @@ class ImportPedidosTest(unittest.TestCase):
             enc2 = next(o for o in payload["orders"] if o["order_key"] == "10002" and o["flow"] == "encomenda")
             # purchase/fee/ship from notas 10 (newer), not overwritten by 9
             self.assertEqual(enc2["purchase_amount"], 650)
-            self.assertEqual(enc2["payment_fee"], 25)
+            self.assertIsNone(enc2["payment_fee"])
+            self.assertEqual(enc2["import_tax"], 25)
             self.assertEqual(enc2["shipping_cost"], 70)
 
             pronta = next(o for o in payload["orders"] if o["order_key"] == "501")

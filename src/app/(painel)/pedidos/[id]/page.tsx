@@ -120,7 +120,7 @@ export default async function PedidoPage({
         ) : null}
         <Field label="Taxa de pagamento" name="payment_fee" defaultValue={order.payment_fee} />
         <Field label="Custo de envio" name="shipping_cost" defaultValue={order.shipping_cost} />
-        <Field label="Taxa de importação" name="import_tax" defaultValue={order.import_tax} />
+        <Field label="Alfândega" name="import_tax" defaultValue={order.import_tax} />
         <div className="flex flex-wrap gap-4 text-sm md:col-span-3">
           <Check name="purchased" label="Comprado" defaultChecked={order.purchased} />
           <Check name="cpf_linked" label="CPF vinculado" defaultChecked={order.cpf_linked} />
