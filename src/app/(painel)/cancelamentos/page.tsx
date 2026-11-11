@@ -3,6 +3,7 @@ import { createCancellation, updateCancellation } from "@/app/(painel)/cancelame
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl, monthLabel, shortDate } from "@/lib/format";
+import { CANCELLATION_STATUSES, REFUND_METHODS, withCurrent } from "@/lib/lists";
 
 export default async function CancelamentosPage({
   searchParams,
@@ -47,9 +48,17 @@ export default async function CancelamentosPage({
     ) = ${selected}
     order by c.due_date desc nulls last, c.order_key desc
   `;
-  const rows = data ?? [];
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const rows = [...(data ?? [])].sort((left, right) => {
+    const pending = Number(Boolean(left.done_date)) - Number(Boolean(right.done_date));
+    if (pending) return pending;
+    return String(left.due_date || "9999-99-99").localeCompare(String(right.due_date || "9999-99-99"));
+  });
   const valued = rows.filter((item) => asNumber(item.amount) != null);
-  const total = valued.reduce((sum, item) => sum + (asNumber(item.amount) ?? 0), 0);
+  const returned = rows.filter((item) => item.done_date);
+  const pendingRows = rows.filter((item) => !item.done_date);
+  const returnedTotal = returned.reduce((sum, item) => sum + (asNumber(item.amount) ?? 0), 0);
+  const pendingTotal = pendingRows.reduce((sum, item) => sum + (asNumber(item.amount) ?? 0), 0);
   const missingAmount = rows.length - valued.length;
 
   return (
@@ -58,7 +67,7 @@ export default async function CancelamentosPage({
         <div>
           <h1 className="page-title">Cancelamentos de {monthLabel(selected)}</h1>
           <p className="max-w-3xl text-sm text-muted">
-            O mês é o da venda na ficha. {rows.length} {rows.length === 1 ? "cancelamento" : "cancelamentos"} neste mês{valued.length ? `, somando ${brl(total)}` : ""}.{missingAmount ? ` ${missingAmount} sem valor registrado.` : ""}
+            O mês é o da venda na ficha. {rows.length} {rows.length === 1 ? "cancelamento" : "cancelamentos"} neste mês. Devolvido {brl(returnedTotal)}. Falta devolver {brl(pendingTotal)}.{missingAmount ? ` ${missingAmount} sem valor registrado.` : ""}
           </p>
         </div>
         <nav className="flex flex-wrap gap-2">
@@ -79,8 +88,8 @@ export default async function CancelamentosPage({
           <label className="grid gap-1 text-sm">Modelo<input name="model" /></label>
           <label className="grid gap-1 text-sm">Valor<input name="amount" /></label>
           <label className="grid gap-1 text-sm">Meio<input name="gateway" placeholder="vindi" /></label>
-          <label className="grid gap-1 text-sm">Modo do estorno<input name="refund_method" /></label>
-          <label className="grid gap-1 text-sm">Status<input name="status" defaultValue="Cancelado" /></label>
+          <Choice label="Modo do estorno" name="refund_method" value="" options={REFUND_METHODS} />
+          <Choice label="Status" name="status" value="Cancelado" options={CANCELLATION_STATUSES} />
           <label className="grid gap-1 text-sm">Devolver até<input name="due_date" type="date" /></label>
           <label className="grid gap-1 text-sm">Devolvido em<input name="done_date" type="date" /></label>
           <label className="grid gap-1 text-sm md:col-span-3">Dados bancários<input name="bank_details" /></label>
@@ -104,7 +113,7 @@ export default async function CancelamentosPage({
             </tr>
           </thead>
           <tbody>
-            {(data ?? []).map((item) => (
+            {rows.map((item) => (
               <tr key={item.id}>
                 <td>
                   {item.order_id ? (
@@ -117,9 +126,9 @@ export default async function CancelamentosPage({
                 </td>
                 <td>{item.model || "—"}</td>
                 <td className="num">{brl(item.amount)}</td>
-                <td>{shortDate(item.due_date)}</td>
-                <td>{item.done_date ? shortDate(item.done_date) : "Pendente"}</td>
-                <td>{item.status || "—"}</td>
+                <td className={!item.done_date && item.due_date && String(item.due_date).slice(0, 10) < today ? "text-danger font-medium" : undefined}>{shortDate(item.due_date)}</td>
+                <td>{item.done_date ? shortDate(item.done_date) : "—"}</td>
+                <td><span className={`tag ${item.done_date ? "tag-ok" : "tag-warn"}`}>{item.status || (item.done_date ? "Devolvido" : "Pendente")}</span></td>
                 <td>{item.gateway || item.refund_method || "—"}</td>
                 <td>{item.bank_details || "—"}</td>
                 <td>
@@ -131,8 +140,8 @@ export default async function CancelamentosPage({
                       <label className="grid gap-1 text-sm">Modelo<input name="model" defaultValue={item.model ?? ""} /></label>
                       <label className="grid gap-1 text-sm">Valor<input name="amount" defaultValue={item.amount ?? ""} /></label>
                       <label className="grid gap-1 text-sm">Meio<input name="gateway" defaultValue={item.gateway ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Modo do estorno<input name="refund_method" defaultValue={item.refund_method ?? ""} /></label>
-                      <label className="grid gap-1 text-sm">Status<input name="status" defaultValue={item.status ?? ""} /></label>
+                      <Choice label="Modo do estorno" name="refund_method" value={item.refund_method || item.gateway} options={REFUND_METHODS} />
+                      <Choice label="Status" name="status" value={item.status} options={CANCELLATION_STATUSES} />
                       <label className="grid gap-1 text-sm">Devolver até<input name="due_date" type="date" defaultValue={item.due_date ? String(item.due_date).slice(0, 10) : ""} /></label>
                       <label className="grid gap-1 text-sm">Devolvido em<input name="done_date" type="date" defaultValue={item.done_date ? String(item.done_date).slice(0, 10) : ""} /></label>
                       <label className="grid gap-1 text-sm">Dados bancários<input name="bank_details" defaultValue={item.bank_details ?? ""} /></label>
@@ -147,5 +156,19 @@ export default async function CancelamentosPage({
         </table>
       </div>
     </div>
+  );
+}
+
+function Choice({ label, name, value, options }: { label: string; name: string; value: string | null; options: readonly string[] }) {
+  return (
+    <label className="grid gap-1 text-sm">
+      {label}
+      <select name={name} defaultValue={value ?? ""}>
+        <option value="">—</option>
+        {withCurrent(options, value).map((item) => (
+          <option key={item} value={item}>{item}</option>
+        ))}
+      </select>
+    </label>
   );
 }

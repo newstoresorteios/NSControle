@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { patchOrder, requestAnaPurchase } from "@/app/(painel)/pedidos/actions";
 import { shortDate } from "@/lib/format";
+import { COMMERCIAL_STATUSES, ORIGINS, shipmentLabel, withCurrent } from "@/lib/lists";
 
 export type SheetMode = "pedidos" | "acompanhamento" | "rastreio" | "entregues";
 
@@ -38,8 +39,6 @@ export type SheetOrder = {
   tax_payment: string | null;
 };
 
-const COMMERCIAL = ["AGUARDANDO PAGAMENTO", "A ENVIAR VINDI", "A ENVIAR", "ENVIADO", "FINALIZADO", "ENTREGUE", "CANCELADO"];
-
 function listTone(status: string | null, delivered = false) {
   const value = (status || "").toUpperCase();
   if (value === "CANCELADO") return "danger";
@@ -63,6 +62,13 @@ export function OrderSheet({
   const ana = mode === "pedidos";
   return (
     <div className="card sheet">
+      <div className="flex flex-wrap gap-2 px-3 pt-3 text-xs">
+        <span className="tag tag-muted">Aguardando</span>
+        <span className="tag tag-info">A enviar / enviado</span>
+        <span className="tag tag-ok">Entregue</span>
+        <span className="tag tag-danger">Cancelado</span>
+        <span className="tag tag-warn">Prazo do fornecedor estourado</span>
+      </div>
       <table>
         <thead>
           <tr>
@@ -86,16 +92,6 @@ export function OrderSheet({
           ) : null}
         </tbody>
       </table>
-      <datalist id="origens">
-        <option value="Japão" />
-        <option value="Europa" />
-        <option value="Uscloser" />
-        <option value="Portugal" />
-        <option value="Tag" />
-        <option value="Global Alvaro" />
-        <option value="particular" />
-        <option value="Loja" />
-      </datalist>
     </div>
   );
 }
@@ -114,17 +110,19 @@ function PedidosHead({ ana }: { ana: boolean }) {
       <th className="check" title="Taxa paga">Taxa</th>
       <th className="check">Entregue</th>
       <th>Obs internas</th>
+      <th></th>
     </>
   );
 }
 
 function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; returnTo: string }) {
   const save = useSave(row.id);
+  const [editing, setEditing] = useState(false);
   return (
     <>
       <OrderCell row={row} status={save.status} pin={ana} />
       <td>
-        <TextCell name="origin" value={row.origin} list="origens" onSave={save.run} />
+        {editing ? <ChoiceCell name="origin" value={row.origin} options={ORIGINS} onSave={save.run} /> : clip(row.origin)}
       </td>
       {ana ? (
         <td className="pin pin-ana">
@@ -136,30 +134,25 @@ function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; ret
         </td>
       ) : null}
       <td className="check">
-        <CheckCell name="purchased" checked={row.purchased} onSave={save.run} />
+        {editing ? <CheckCell name="purchased" checked={row.purchased} onSave={save.run} /> : mark(row.purchased)}
       </td>
-      <td>
-        <TextCell name="supplier_ref" value={row.supplier_ref} onSave={save.run} />
-      </td>
-      <td className="wide">
-        <TextCell name="product_name" value={row.product_name} onSave={save.run} />
-      </td>
-      <td>
-        <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} />
-      </td>
+      <td>{editing ? <TextCell name="supplier_ref" value={row.supplier_ref} onSave={save.run} /> : clip(row.supplier_ref)}</td>
+      <td className="wide">{editing ? <TextCell name="product_name" value={row.product_name} onSave={save.run} /> : clip(row.product_name)}</td>
+      <td>{editing ? <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} /> : clip(row.tracking_code)}</td>
       <td className="check">
-        <CheckCell name="cpf_linked" checked={row.cpf_linked} onSave={save.run} />
+        {editing ? <CheckCell name="cpf_linked" checked={row.cpf_linked} onSave={save.run} /> : mark(row.cpf_linked)}
       </td>
       <td className={row.tax_payment ? "tax-pay" : "check"}>
-        <CheckCell name="tax_paid" checked={row.tax_paid} onSave={save.run} />
+        {editing ? <CheckCell name="tax_paid" checked={row.tax_paid} onSave={save.run} /> : mark(row.tax_paid)}
         {row.tax_payment ? <PayTaxButton text={row.tax_payment} /> : null}
       </td>
       <td className="check">
-        <CheckCell name="delivered" checked={row.delivered} onSave={save.run} />
+        {editing ? <CheckCell name="delivered" checked={row.delivered} onSave={save.run} /> : mark(row.delivered)}
       </td>
       <td className="wide">
-        <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} />
+        {editing ? <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} /> : clip(row.notes_internal)}
       </td>
+      <td><EditButton editing={editing} onClick={() => setEditing((value) => !value)} /></td>
     </>
   );
 }
@@ -179,71 +172,73 @@ function AcompanhamentoHead() {
       <th>Fornecedor</th>
       <th>Nome do fornecedor</th>
       <th>Compra ao fornecedor</th>
+      <th></th>
     </>
   );
 }
 
 function AcompanhamentoRow({ row }: { row: SheetOrder }) {
   const save = useSave(row.id);
+  const [editing, setEditing] = useState(false);
   const [status, setStatus] = useState(row.commercial_status ?? "");
-  const statuses = status && !COMMERCIAL.includes(status) ? [status, ...COMMERCIAL] : COMMERCIAL;
+  useEffect(() => {
+    setStatus(row.commercial_status ?? "");
+  }, [row.commercial_status]);
+  const late = row.supplier_days != null && row.days_open != null && row.days_open > row.supplier_days;
   const tone = listTone(status, row.delivered);
   return (
     <>
       <OrderCell row={row} status={save.status} />
-      <td>
-        <DateCell name="purchase_date" value={row.purchase_date} onSave={save.run} />
-      </td>
-      <td>
-        <DateCell name="payment_date" value={row.payment_date} onSave={save.run} />
-      </td>
+      <td>{editing ? <DateCell name="purchase_date" value={row.purchase_date} onSave={save.run} /> : shortDate(row.purchase_date)}</td>
+      <td>{editing ? <DateCell name="payment_date" value={row.payment_date} onSave={save.run} /> : shortDate(row.payment_date)}</td>
       <td className="wide">
-        <select
-          className={tone ? `tone-${tone}` : undefined}
-          value={status}
-          onChange={(event) => {
-            const next = event.target.value;
-            setStatus(next);
-            if (next === (row.commercial_status ?? "")) return;
-            save.run({ commercial_status: next });
-          }}
-        >
-          <option value="">—</option>
-          {statuses.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
+        {editing ? (
+          <select
+            className={tone ? `tone-${tone}` : undefined}
+            value={status}
+            onChange={(event) => {
+              const next = event.target.value;
+              setStatus(next);
+              if (next === (row.commercial_status ?? "")) return;
+              save.run({ commercial_status: next });
+            }}
+          >
+            <option value="">—</option>
+            {withCurrent(COMMERCIAL_STATUSES, status).map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <StatusTag value={status} delivered={row.delivered} />
+        )}
       </td>
-      <td>
-        <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} />
-      </td>
-      <td className="wide">
-        <TextCell name="product_name" value={row.product_name} onSave={save.run} />
-      </td>
-      <td className="wide">
-        <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} />
-      </td>
-      <td className="num">{row.days_open ?? "—"}</td>
+      <td>{editing ? <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} /> : clip(row.tracking_code)}</td>
+      <td className="wide">{editing ? <TextCell name="product_name" value={row.product_name} onSave={save.run} /> : clip(row.product_name)}</td>
+      <td className="wide">{editing ? <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} /> : clip(row.notes_internal)}</td>
+      <td className={`num ${late ? "text-danger font-medium" : ""}`}>{row.days_open ?? "—"}</td>
       <td className="w-24">
-        <input
-          inputMode="numeric"
-          defaultValue={row.supplier_days ?? ""}
-          onBlur={(event) => {
-            const raw = event.target.value.trim();
-            const next = raw === "" ? null : Number(raw);
-            if (next !== null && !Number.isInteger(next)) return;
-            if (next === row.supplier_days) return;
-            save.run({ supplier_days: next });
-          }}
-        />
+        {editing ? (
+          <input
+            inputMode="numeric"
+            defaultValue={row.supplier_days ?? ""}
+            onBlur={(event) => {
+              const raw = event.target.value.trim();
+              const next = raw === "" ? null : Number(raw);
+              if (next !== null && !Number.isInteger(next)) return;
+              if (next === row.supplier_days) return;
+              save.run({ supplier_days: next });
+            }}
+          />
+        ) : (
+          row.supplier_days ?? "—"
+        )}
       </td>
-      <td>
-        <TextCell name="origin" value={row.origin} list="origens" onSave={save.run} />
-      </td>
-      <td><TextCell name="supplier_name" value={row.supplier_name} onSave={save.run} /></td>
-      <td><DateCell name="supplier_purchase_date" value={row.supplier_purchase_date} onSave={save.run} /></td>
+      <td>{editing ? <ChoiceCell name="origin" value={row.origin} options={ORIGINS} onSave={save.run} /> : clip(row.origin)}</td>
+      <td>{editing ? <TextCell name="supplier_name" value={row.supplier_name} onSave={save.run} /> : clip(row.supplier_name)}</td>
+      <td>{editing ? <DateCell name="supplier_purchase_date" value={row.supplier_purchase_date} onSave={save.run} /> : shortDate(row.supplier_purchase_date)}</td>
+      <td><EditButton editing={editing} onClick={() => setEditing((value) => !value)} /></td>
     </>
   );
 }
@@ -269,7 +264,7 @@ function RastreioRow({ row }: { row: SheetOrder }) {
     <>
       <OrderCell row={row} status={save.status} />
       <td>
-        <TextCell name="origin" value={row.origin} list="origens" onSave={save.run} />
+        <TextCell name="origin" value={row.origin} onSave={save.run} />
       </td>
       <td>
         <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} />
@@ -301,7 +296,7 @@ function RastreioRow({ row }: { row: SheetOrder }) {
 }
 
 function OrderCell({ row, status, pin = false }: { row: SheetOrder; status: SaveStatus; pin?: boolean }) {
-  const number = row.order_key;
+  const number = shipmentLabel(row.order_key, row.label);
   const label = (row.label || "").trim();
   const extra = label && label !== number && label !== `Pedido ${number}` ? label : null;
   return (
@@ -317,6 +312,60 @@ function OrderCell({ row, status, pin = false }: { row: SheetOrder; status: Save
       <div className="text-xs text-muted">{extra || (status === "idle" ? "\u00a0" : STATUS_LABEL[status])}</div>
       {extra && status !== "idle" ? <div className="text-xs text-muted">{STATUS_LABEL[status]}</div> : null}
     </td>
+  );
+}
+
+function StatusTag({ value, delivered = false }: { value: string | null; delivered?: boolean }) {
+  const tone = listTone(value, delivered) || "muted";
+  const label = value || (delivered ? "Entregue" : "—");
+  return <span className={`tag tag-${tone}`}>{label}</span>;
+}
+
+function clip(value: string | null) {
+  const text = (value || "").replace(/\s+/g, " ").trim();
+  if (!text) return <span className="text-muted">—</span>;
+  return <span className="clip" title={text}>{text}</span>;
+}
+
+function mark(on: boolean) {
+  return on ? <span className="text-ok">✓</span> : <span className="text-muted">—</span>;
+}
+
+function EditButton({ editing, onClick }: { editing: boolean; onClick: () => void }) {
+  return (
+    <button className="secondary" type="button" onClick={onClick}>
+      {editing ? "Fechar" : "Editar"}
+    </button>
+  );
+}
+
+function ChoiceCell({
+  name,
+  value,
+  options,
+  onSave,
+}: {
+  name: string;
+  value: string | null;
+  options: readonly string[];
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  return (
+    <select
+      defaultValue={value ?? ""}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (next === (value ?? "")) return;
+        onSave({ [name]: next });
+      }}
+    >
+      <option value="">—</option>
+      {withCurrent(options, value).map((item) => (
+        <option key={item} value={item}>
+          {item}
+        </option>
+      ))}
+    </select>
   );
 }
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { signOut } from "@/app/login/actions";
 
-export function UserMenu({ name }: { name: string }) {
+export function UserMenu({ name, admin = false }: { name: string; admin?: boolean }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -29,6 +29,11 @@ export function UserMenu({ name }: { name: string }) {
           <Link href="/conta" className="mt-3 block text-sm underline" onClick={() => setOpen(false)}>
             Alterar senha
           </Link>
+          {admin ? (
+            <Link href="/usuarios" className="mt-3 block text-sm underline" onClick={() => setOpen(false)}>
+              Usuários
+            </Link>
+          ) : null}
           <form action={signOut} className="mt-3">
             <button className="secondary" type="submit">Sair</button>
           </form>

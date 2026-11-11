@@ -359,9 +359,34 @@ a.card:hover {
 }
 
 .sheet {
-  max-height: calc(100vh - 15rem);
-  overflow: auto;
   padding: 0;
+}
+
+.tag {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.tag-ok { background: #e5f6ea; color: var(--ok); }
+.tag-info { background: #e7f0ff; color: var(--brand); }
+.tag-warn { background: #fff1e6; color: var(--warn); }
+.tag-danger { background: #fde8eb; color: var(--danger); }
+.tag-muted { background: #eef1f6; color: var(--muted); }
+
+.text-warn { color: var(--warn); }
+
+.clip {
+  display: block;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sheet table {

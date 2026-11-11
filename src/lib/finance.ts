@@ -122,6 +122,31 @@ export function monthSummary(
   };
 }
 
+const STORE_LABEL: Record<string, string> = {
+  "687890": "New Store",
+  "1490060": "NS Relógios",
+};
+
+function storeLabel(id: string) {
+  return STORE_LABEL[id] ?? id;
+}
+
+export function marginOnComplete(orders: MoneyOrder[]) {
+  const complete = orders.filter((order) => asNumber(order.sale_amount) != null && asNumber(order.purchase_amount) != null);
+  const vendas = complete.reduce((total, order) => total + (asNumber(order.sale_amount) ?? 0), 0);
+  const custo = complete.reduce(
+    (total, order) =>
+      total +
+      (asNumber(order.purchase_amount) ?? 0) +
+      (asNumber(order.payment_fee) ?? 0) +
+      (asNumber(order.shipping_cost) ?? 0) +
+      (asNumber(order.import_tax) ?? 0),
+    0,
+  );
+  const resultado = vendas - custo;
+  return { count: complete.length, vendas, resultado, margem: vendas > 0 ? resultado / vendas : null };
+}
+
 const EXTRA_FLOW: Record<string, string> = {
   encomenda: "Sob encomenda",
   ns_creditos: "NS Créditos",
@@ -141,11 +166,11 @@ export function financeSlices(
   for (const order of orders) {
     const prefixed = /^(\d{6,}):/.exec(String(order.order_key ?? ""));
     if (prefixed) {
-      put(prefixed[1], prefixed[1], order);
+      put(prefixed[1], storeLabel(prefixed[1]), order);
       continue;
     }
     if (order.flow === "loja_nova") {
-      put(PRIMARY_STORE, PRIMARY_STORE, order);
+      put(PRIMARY_STORE, storeLabel(PRIMARY_STORE), order);
       continue;
     }
     put(`flow:${order.flow}`, EXTRA_FLOW[order.flow] ?? order.flow, order);

@@ -46,7 +46,7 @@ export type TrayDraft = {
   order_key: string;
   label: string;
   flow: "loja_nova";
-  origin: "Loja";
+  origin: string | null;
   product_name: string | null;
   reference: string | null;
   commercial_status: string | null;
@@ -250,7 +250,7 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
     order_key: key,
     label: `Pedido ${key}`,
     flow: "loja_nova",
-    origin: "Loja",
+    origin: null,
     product_name: lines[0]?.slice(0, 300) ?? null,
     reference: lines.join(" / ").slice(0, 500) || null,
     commercial_status: status,
@@ -331,7 +331,7 @@ export function mergeTrayOrder(
   if (!sheetOwned) row.data_source = "tray";
   const label = (existing.label || "").trim();
   if (!label || label === existing.order_key) row.label = draft.label;
-  if (!existing.origin) row.origin = draft.origin;
+  if (!existing.origin && draft.origin) row.origin = draft.origin;
   if (draft.product_name && !existing.product_name) row.product_name = draft.product_name;
   if (draft.reference && (!sheetOwned || !existing.reference)) row.reference = draft.reference;
   if (draft.commercial_status && (!sheetOwned || !existing.commercial_status)) {

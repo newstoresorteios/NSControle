@@ -11,6 +11,11 @@ export default function CalculadoraPage() {
   const [parcelado, setParcelado] = useState("9799.99");
   const [paymentOff, setPaymentOff] = useState("5");
   const [pixOff, setPixOff] = useState("15");
+  const [gift, setGift] = useState("0");
+  const [tradeIn, setTradeIn] = useState("0");
+  const [watchA, setWatchA] = useState("0");
+  const [watchB, setWatchB] = useState("0");
+  const [cashOff, setCashOff] = useState("5");
 
   const europe = useMemo(() => {
     const price = number(eur);
@@ -28,6 +33,20 @@ export default function CalculadoraPage() {
     const pixAfterPayment = afterPayment * (1 - number(pixOff) / 100);
     return { afterPayment, pixList, pixAfterPayment };
   }, [parcelado, paymentOff, pixOff]);
+
+  const paid = useMemo(() => {
+    const installment = number(parcelado);
+    const net = installment - number(gift) - number(tradeIn);
+    return { net, pix: net * (1 - number(pixOff) / 100) };
+  }, [parcelado, gift, tradeIn, pixOff]);
+
+  const watches = useMemo(() => {
+    const first = number(watchA);
+    const second = number(watchB);
+    const cash = first * (1 - number(cashOff) / 100);
+    const pix = cash * (1 - number(pixOff) / 100);
+    return { cash, pix, difference: first - second };
+  }, [watchA, watchB, cashOff, pixOff]);
 
   return (
     <div className="grid gap-5">
@@ -61,6 +80,31 @@ export default function CalculadoraPage() {
           <p>Depois do desconto de pagamento: {brl(sale.afterPayment)}</p>
           <p>PIX sobre o parcelado: {brl(sale.pixList)}</p>
           <p className="text-2xl font-medium tracking-tight">PIX depois do pagamento: {brl(sale.pixAfterPayment)}</p>
+        </div>
+      </section>
+      <section className="card grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3">
+          <h2 className="section-title">Valor pago parcelado</h2>
+          <NumberField label="Parcelado" value={parcelado} onChange={setParcelado} />
+          <NumberField label="Cartão presente" value={gift} onChange={setGift} />
+          <NumberField label="Relógio de entrada" value={tradeIn} onChange={setTradeIn} />
+        </div>
+        <div className="grid content-end gap-2">
+          <p>Parcelado menos cartão e entrada: {brl(paid.net)}</p>
+          <p className="text-2xl font-medium tracking-tight">O mesmo no PIX ({pixOff}%): {brl(paid.pix)}</p>
+        </div>
+      </section>
+      <section className="card grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3">
+          <h2 className="section-title">Preços relógios</h2>
+          <NumberField label="Parcelado" value={watchA} onChange={setWatchA} />
+          <NumberField label="Desconto à vista (%)" value={cashOff} onChange={setCashOff} />
+          <NumberField label="Segundo preço" value={watchB} onChange={setWatchB} />
+        </div>
+        <div className="grid content-end gap-2">
+          <p>Desconto à vista: {brl(watches.cash)}</p>
+          <p>Total no PIX: {brl(watches.pix)}</p>
+          <p className="text-2xl font-medium tracking-tight">Diferença entre os dois preços: {brl(watches.difference)}</p>
         </div>
       </section>
     </div>

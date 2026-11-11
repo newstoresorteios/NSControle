@@ -42,7 +42,7 @@ test("pedido pago da loja vira venda, rastreio e mês financeiro", () => {
   assert.ok(draft);
   assert.equal(draft.order_key, "1200");
   assert.equal(draft.flow, "loja_nova");
-  assert.equal(draft.origin, "Loja");
+  assert.equal(draft.origin, null);
   assert.equal(draft.sale_amount, 1500.5);
   assert.equal(draft.sale_explicit, true);
   assert.equal(draft.finance_month, "2026-10-01");

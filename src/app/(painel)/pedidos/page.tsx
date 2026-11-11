@@ -6,6 +6,7 @@ import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ACCENTS, PLAIN, idPresence, likePattern, orderDigits } from "@/lib/order-filters";
 import { taxPaymentText } from "@/lib/taxes";
+import { OPEN_COMMERCIAL_STATUSES, ORIGINS, withCurrent } from "@/lib/lists";
 
 const PAGE_SIZES = [30, 50, 100, 200];
 const DEFAULT_PAGE_SIZE = 100;
@@ -17,7 +18,7 @@ function pageSizeOf(value: string | undefined) {
 
 const ABAS: { id: SheetMode; label: string; hint: string }[] = [
   { id: "pedidos", label: "Pedidos", hint: "Compras em aberto: origem, comprado, CPF, taxa e entregue." },
-  { id: "acompanhamento", label: "Acompanhamento", hint: "A enviar Vindi, a enviar e enviado, com o código de rastreio." },
+  { id: "acompanhamento", label: "Acompanhamento", hint: "Pedidos em aberto, com o status salvo na ficha." },
   { id: "rastreio", label: "Rastreio", hint: "Códigos que ainda não foram marcados como entregues." },
   { id: "entregues", label: "Entregues", hint: "Arquivo. Desmarcar Entregue devolve o pedido para a lista aberta." },
 ];
@@ -110,11 +111,11 @@ export default async function PedidosPage({
       <div>
         <h1 className="page-title">Pedidos</h1>
         <p className="text-muted">
-          {count} no banco
-          {summary ? ` · ${summary}` : ` · ${hint}`}
+          {count} {count === 1 ? "pedido" : "pedidos"}
+          {summary ? ` · ${summary}` : hint ? ` · ${hint}` : ""}
           {pages > 1 ? ` · página ${Math.min(page, pages)} de ${pages}` : ""}
           {" "}
-          A edição grava ao sair do campo.
+          A lista abre em leitura. Editar grava só o campo alterado.
         </p>
       </div>
       {params.erro === "duplicado" ? (
@@ -142,8 +143,8 @@ export default async function PedidosPage({
         action="/pedidos"
       >
         <label className="grid gap-1 text-sm">
-          Número
-          <input name="numero" defaultValue={numero || legacy} placeholder="26312" autoComplete="off" />
+          Buscar pedido
+          <input name="numero" defaultValue={numero || legacy} placeholder="Buscar pedido" autoComplete="off" />
         </label>
         <label className="grid gap-1 text-sm">
           Nome
@@ -177,21 +178,29 @@ export default async function PedidosPage({
         </div>
       </form>
       {aba === "pedidos" && !textSearch && !comId ? (
-        <form action={addSheetRow} className="card grid items-end gap-3 md:grid-cols-[1fr_12rem_1fr_auto]">
-          <label className="grid gap-1 text-sm">
-            Nova linha
-            <input name="label" required placeholder="Pedido 26000" />
-          </label>
-          <label className="grid gap-1 text-sm">
-            Origem
-            <input name="origin" list="origens" required placeholder="Japão" />
-          </label>
-          <label className="grid gap-1 text-sm">
-            Produto
-            <input name="product_name" placeholder="opcional" />
-          </label>
-          <button type="submit">Incluir</button>
-        </form>
+        <details className="card">
+          <summary className="section-title">Novo envio</summary>
+          <form action={addSheetRow} className="mt-3 grid items-end gap-3 md:grid-cols-[1fr_14rem_1fr_auto]">
+            <label className="grid gap-1 text-sm">
+              Pedido
+              <input name="label" required placeholder="26086 ou 26086 (mido)" />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Origem
+              <select name="origin" defaultValue="">
+                <option value="">Escolher fornecedor</option>
+                {withCurrent(ORIGINS, "").map((origin) => (
+                  <option key={origin} value={origin}>{origin}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              Produto
+              <input name="product_name" placeholder="opcional" />
+            </label>
+            <button type="submit">Incluir</button>
+          </form>
+        </details>
       ) : null}
       <OrderSheet
         rows={rows}
@@ -341,7 +350,7 @@ function abaClause(sql: SqlTag, filters: SheetFilters) {
     return sql`and delivered = false and (origin is not null or tray_modified_at is not null)`;
   }
   if (filters.aba === "acompanhamento") {
-    return sql`and commercial_status in ('A ENVIAR VINDI', 'A ENVIAR', 'ENVIADO')`;
+    return sql`and commercial_status in ${sql(OPEN_COMMERCIAL_STATUSES)}`;
   }
   if (filters.aba === "rastreio") return sql`and delivered = false and tracking_code is not null`;
   return sql`and delivered = true`;
