@@ -7,6 +7,19 @@ import { db, updateRow } from "@/lib/db";
 import { text } from "@/lib/form";
 import { calendarDate, nonnegativeMoney, validUuid } from "@/lib/operational";
 
+function listedMonth(formData: FormData) {
+  const month = text(formData, "month");
+  return month && /^\d{4}-\d{2}$/.test(month) ? month : "";
+}
+
+function go(month: string, flag?: "erro" | "ok") {
+  const query = new URLSearchParams();
+  if (month) query.set("month", month);
+  if (flag) query.set(flag, "1");
+  const qs = query.toString();
+  redirect(qs ? `/cancelamentos?${qs}` : "/cancelamentos");
+}
+
 function cancellationFields(formData: FormData) {
   const amount = nonnegativeMoney(String(formData.get("amount") ?? ""));
   const due = text(formData, "due_date");
@@ -28,8 +41,9 @@ function cancellationFields(formData: FormData) {
 export async function createCancellation(formData: FormData) {
   await requireTeam();
   const orderKey = text(formData, "order_key");
+  const month = listedMonth(formData);
   const fields = cancellationFields(formData);
-  if (!fields) redirect("/cancelamentos?erro=1");
+  if (!fields) go(month, "erro");
   try {
     await db().begin(async (tx) => {
       const found = orderKey ? await tx<{ id: string }[]>`
@@ -42,26 +56,27 @@ export async function createCancellation(formData: FormData) {
       await tx`insert into ctl_cancellations ${tx(row)}`;
     });
   } catch {
-    redirect("/cancelamentos?erro=1");
+    go(month, "erro");
   }
   revalidatePath("/cancelamentos");
-  redirect("/cancelamentos");
+  go(month);
 }
 
 export async function updateCancellation(formData: FormData) {
   await requireTeam();
   const id = text(formData, "id") ?? "";
-  if (!validUuid(id)) redirect("/cancelamentos?erro=1");
+  const month = listedMonth(formData);
+  if (!validUuid(id)) go(month, "erro");
   const exists = await db()<{ id: string }[]>`select id from ctl_cancellations where id = ${id} limit 1`;
-  if (!exists[0]) redirect("/cancelamentos?erro=1");
+  if (!exists[0]) go(month, "erro");
   const fields = cancellationFields(formData);
-  if (!fields) redirect("/cancelamentos?erro=1");
+  if (!fields) go(month, "erro");
   try {
     await updateRow("ctl_cancellations", fields, "id", id);
   } catch {
-    redirect("/cancelamentos?erro=1");
+    go(month, "erro");
   }
   revalidatePath("/cancelamentos");
   revalidatePath("/financeiro");
-  redirect("/cancelamentos?ok=1");
+  go(month, "ok");
 }
