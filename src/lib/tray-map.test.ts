@@ -257,3 +257,31 @@ test("filtros e eventos de pedido", () => {
   assert.equal(orderIdFromEvent({ scope_name: "order", scope_id: "44" }), "44");
   assert.equal(orderIdFromEvent({ scope_name: "product", scope_id: "44" }), null);
 });
+
+test("status ENVIADO da loja não entra na ficha nem substitui o status escolhido", () => {
+  const draft = buildTrayDraft({
+    order: { id: "26850", status: "ENVIADO", status_group: "shipped", total: "10.00", has_payment: true, date: "2026-11-11" },
+  });
+  assert.ok(draft);
+  assert.equal(draft.commercial_status, "ENVIADO");
+  assert.equal(mergeTrayOrder(null, draft).row.commercial_status, null);
+  const existing: StoredOrder = {
+    id: "abc",
+    order_key: "26850",
+    flow: "loja_nova",
+    finance_month: "2026-11-01",
+    label: "Pedido 26850",
+    origin: null,
+    product_name: null,
+    reference: null,
+    commercial_status: "A ENVIAR VINDI",
+    sale_amount: 10,
+    payment_date: null,
+    purchase_date: null,
+    tracking_code: null,
+    delivered: false,
+    data_source: "bi",
+    tray_modified_at: null,
+  };
+  assert.equal(mergeTrayOrder(existing, draft).row.commercial_status, undefined);
+});

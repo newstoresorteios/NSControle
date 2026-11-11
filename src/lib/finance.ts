@@ -22,6 +22,16 @@ export type FinanceSlice = {
   label: string;
   orders: number;
   summary: MonthSummary;
+  complete: {
+    count: number;
+    vendas: number;
+    custo: number;
+    resultado: number;
+    margem: number | null;
+    retorno: number | null;
+    markup: number | null;
+    mediaGanhos: number | null;
+  };
 };
 
 export type MonthSummary = {
@@ -163,7 +173,16 @@ export function marginOnComplete(orders: MoneyOrder[]) {
     0,
   );
   const resultado = vendas - custo;
-  return { count: complete.length, vendas, resultado, margem: vendas > 0 ? resultado / vendas : null };
+  return {
+    count: complete.length,
+    vendas,
+    custo,
+    resultado,
+    margem: vendas > 0 ? resultado / vendas : null,
+    retorno: custo > 0 ? resultado / custo : null,
+    markup: custo > 0 ? vendas / custo : null,
+    mediaGanhos: complete.length ? resultado / complete.length : null,
+  };
 }
 
 const EXTRA_FLOW: Record<string, string> = {
@@ -199,6 +218,7 @@ export function financeSlices(
       label: bucket.label,
       orders: bucket.rows.filter((row) => asNumber(row.sale_amount) != null).length,
       summary: monthSummary(bucket.rows, null, month, today),
+      complete: marginOnComplete(bucket.rows),
     }))
     .sort((a, b) => {
       if (a.key === PRIMARY_STORE) return -1;

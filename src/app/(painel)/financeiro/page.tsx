@@ -225,13 +225,13 @@ export default async function FinanceiroPage({
         <section className="card overflow-x-auto">
           <h2 className="section-title">Por loja</h2>
           <p className="mt-1 text-sm text-muted">
-            O quadro de cima é a soma. Cada linha repete venda, custo e lucro daquela parte.
+            Cada linha usa só os pedidos que já têm venda e compra. O lucro parcial do topo continua contando o custo que ainda está sem venda.
           </p>
           <table className="mt-3">
             <thead>
               <tr>
                 <th>Loja</th>
-                <th>Pedidos</th>
+                <th>Pedidos completos</th>
                 <th>Venda</th>
                 <th>Custo</th>
                 <th>Lucro</th>
@@ -242,29 +242,29 @@ export default async function FinanceiroPage({
               {slices.map((slice) => (
                 <tr key={slice.key}>
                   <td>{slice.label}</td>
-                  <td className="num">{slice.orders}</td>
-                  <td className="num">{brl(slice.summary.vendas)}</td>
-                  <td className="num text-danger">{brl(slice.summary.custoTotal)}</td>
-                  <td className={`num ${slice.summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
-                    {brl(slice.summary.resultado)}
+                  <td className="num">{slice.complete.count}</td>
+                  <td className="num">{brl(slice.complete.vendas)}</td>
+                  <td className="num text-danger">{brl(slice.complete.custo)}</td>
+                  <td className={`num ${slice.complete.resultado < 0 ? "text-danger" : "text-ok"}`}>
+                    {brl(slice.complete.resultado)}
                   </td>
-                  <td className="num">{percent(slice.summary.margem)}</td>
+                  <td className="num">{percent(slice.complete.margem)}</td>
                 </tr>
               ))}
               <tr>
                 <td>Soma</td>
-                <td className="num">{slices.reduce((total, slice) => total + slice.orders, 0)}</td>
-                <td className="num">{brl(summary.vendas)}</td>
-                <td className="num text-danger">{brl(summary.custoTotal)}</td>
-                <td className={`num ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(summary.resultado)}</td>
-                <td className="num">{percent(summary.margem)}</td>
+                <td className="num">{slices.reduce((total, slice) => total + slice.complete.count, 0)}</td>
+                <td className="num">{brl(complete.vendas)}</td>
+                <td className="num text-danger">{brl(complete.custo)}</td>
+                <td className={`num ${complete.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(complete.resultado)}</td>
+                <td className="num">{percent(complete.margem)}</td>
               </tr>
             </tbody>
           </table>
         </section>
       ) : null}
       {slices.some((slice) => slice.summary.vendas === 0 && slice.summary.custoTotal > 0) ? (
-        <p className="text-sm text-muted">Sob encomenda com custo e sem venda neste mês reduz o lucro. A divisão entre loja nova e sob encomenda continua a da ficha.</p>
+        <p className="text-sm text-muted">Há custo de sob encomenda sem venda neste mês. Ele fica no lucro parcial do topo e não entra na tabela, porque a tabela só soma pedido com venda e compra.</p>
       ) : null}
       </> : null}
 
@@ -372,8 +372,7 @@ export default async function FinanceiroPage({
           </tbody>
         </table>
         <p className="mt-3 text-sm text-muted">
-          Taxas e envios reúnem taxa da máquina, frete e taxa de importação. Os totais seguem o fluxo gravado
-          em cada ficha; a identificação de loja velha ainda depende de confirmação.
+          Taxas e envios reúnem taxa da máquina, frete e alfândega.
           {summary.vendasCreditos ? ` NS Créditos ${brl(summary.vendasCreditos)} entram no resultado e ficam fora da meta.` : ""}
         </p>
         {gaps.length ? (
@@ -521,13 +520,15 @@ export default async function FinanceiroPage({
               <th>Retorno sobre custo total</th>
               <th>Margem de lucro</th>
               <th>Markup sobre o custo</th>
+              <th>Média de ganhos</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td className="num">{percent(summary.retorno)}</td>
-              <td className="num">{percent(summary.margem)}</td>
-              <td className="num">{percent(summary.markup)}</td>
+              <td className="num">{percent(complete.retorno)}</td>
+              <td className="num">{percent(complete.margem)}</td>
+              <td className="num">{percent(complete.markup)}</td>
+              <td className="num">{brl(complete.mediaGanhos)}</td>
             </tr>
           </tbody>
         </table>
@@ -549,7 +550,9 @@ export default async function FinanceiroPage({
             </tr>
           </tbody>
         </table>
-        <p className="mt-3 text-sm text-muted">Cada média usa só as linhas em que o valor foi lançado.</p>
+        <p className="mt-3 text-sm text-muted">
+          Retorno, margem, markup e média de ganhos usam só os {complete.count} pedidos com venda e compra. Cada média abaixo usa só as linhas em que o valor foi lançado.
+        </p>
       </section>
       </> : null}
 

@@ -71,7 +71,32 @@ export const INVENTORY_BRANDS = [
   "Victorinox",
 ] as const;
 
-export const INVENTORY_ORIGINS = ["Europa", "Japão", "Portugal", "Estados Unidos", "Brasil", "Loja"] as const;
+export const INVENTORY_ORIGINS = [
+  "Europa",
+  "Japão",
+  "Portugal",
+  "Estados Unidos",
+  "Brasil",
+  "Loja",
+  "Uscloser",
+  "Particular",
+  "Devolução",
+  "Europa Alvaro",
+  "AliExpress",
+  "Fast Box",
+  "Não sei onde foi comprado",
+] as const;
+
+function foldOption(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+export function canonicalOption(options: readonly string[], value: string | null | undefined) {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  const key = foldOption(raw);
+  return options.find((option) => foldOption(option) === key) ?? raw;
+}
 
 export const INVENTORY_LOCATIONS = [
   "Marketing",

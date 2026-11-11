@@ -216,7 +216,7 @@ export default async function PedidosPage({
             </Link>
           ) : null}
           <span className="self-center text-muted">
-            {rows.length} nesta página · {count} no banco
+            {rows.length} nesta página · {count} pedidos
           </span>
           {page < pages ? (
             <Link className="button secondary" href={href({ ...listQuery, page: page + 1 })}>

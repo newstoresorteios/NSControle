@@ -131,6 +131,9 @@ test("separa as duas lojas e mantém a soma no total", () => {
   close(slices[0].summary.resultado, 50);
   close(slices[1].summary.vendas, 50);
   close(slices[1].summary.resultado, 45);
+  assert.equal(slices[1].complete.count, 0);
+  close(slices[0].complete.margem, 0.5);
+  close(slices[0].complete.mediaGanhos, 50);
   close(slices[2].summary.vendas, 20);
   const total = monthSummary(orders, null, "2026-11", new Date(2026, 10, 10));
   close(

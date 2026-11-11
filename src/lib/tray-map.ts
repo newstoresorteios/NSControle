@@ -289,6 +289,13 @@ function monthKey(month: string | null): string {
   return month || SENTINEL;
 }
 
+const STORE_STATUS_SKIP = new Set(["ENVIADO", "FINALIZADO", "ENTREGUE"]);
+
+function statusFromStore(status: string | null): string | null {
+  if (!status || STORE_STATUS_SKIP.has(status)) return null;
+  return status;
+}
+
 export function mergeTrayOrder(
   existing: StoredOrder | null,
   draft: TrayDraft,
@@ -303,7 +310,7 @@ export function mergeTrayOrder(
         origin: draft.origin,
         reference: draft.reference,
         product_name: draft.product_name,
-        commercial_status: draft.commercial_status,
+        commercial_status: statusFromStore(draft.commercial_status),
         purchased: false,
         cpf_linked: false,
         tax_paid: false,
@@ -334,9 +341,8 @@ export function mergeTrayOrder(
   if (!existing.origin && draft.origin) row.origin = draft.origin;
   if (draft.product_name && !existing.product_name) row.product_name = draft.product_name;
   if (draft.reference && (!sheetOwned || !existing.reference)) row.reference = draft.reference;
-  if (draft.commercial_status && (!sheetOwned || !existing.commercial_status)) {
-    row.commercial_status = draft.commercial_status;
-  }
+  const incomingStatus = statusFromStore(draft.commercial_status);
+  if (incomingStatus && !existing.commercial_status) row.commercial_status = incomingStatus;
   if (draft.sale_explicit) row.sale_amount = draft.sale_amount;
   if (draft.payment_date && (!sheetOwned || !existing.payment_date)) row.payment_date = draft.payment_date;
   if (!existing.purchase_date && draft.purchase_date) row.purchase_date = draft.purchase_date;
