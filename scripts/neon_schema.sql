@@ -194,6 +194,26 @@ create table if not exists public.ctl_cancellations (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.ctl_redirect_addresses (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  cpf text,
+  phone text,
+  email text,
+  street text,
+  street_number text,
+  complement text,
+  district text,
+  city text,
+  state text,
+  zip_code text,
+  use_us text,
+  use_eu text,
+  use_jp text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create unique index if not exists ctl_cancellations_source_occurrence_uidx
   on public.ctl_cancellations (source, source_occurrence)
   where source is not null and source_occurrence is not null;

@@ -27,7 +27,7 @@ export default async function PainelLayout({ children }: { children: React.React
             </div>
             <div className="ml-auto flex items-center gap-3">
               <span className="hidden max-w-52 truncate text-xs tracking-wide text-muted sm:inline">{actor.displayName}</span>
-              <UserMenu name={actor.displayName} />
+              <UserMenu name={actor.displayName} admin={actor.role === "admin"} />
             </div>
           </div>
           <div className="relative border-t border-line lg:hidden">

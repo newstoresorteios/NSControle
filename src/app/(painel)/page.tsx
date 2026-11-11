@@ -229,8 +229,8 @@ export default async function HomePage({
             ))}
           </tbody>
         </table>
-        {summary.semCompra || summary.semAlfandega || summary.semEnvio ? (
-          <p className="mt-3 text-sm text-danger">Pedido com venda e valor vazio entra no lucro como zero.</p>
+        {summary.semCompra ? (
+          <p className="mt-3 text-sm text-warn">Lucro parcial — {summary.semCompra} pedidos sem compra. A margem do financeiro usa só os pedidos com compra lançada.</p>
         ) : null}
       </section>
     </div>

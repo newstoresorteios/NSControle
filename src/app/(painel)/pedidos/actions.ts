@@ -86,29 +86,41 @@ const TEXT_FIELDS = [
 
 const FLAG_FIELDS = ["purchased", "cpf_linked", "tax_paid", "delivered"] as const;
 
-function sheetKey(label: string) {
+function shipmentKey(label: string) {
   const folded = label
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
-  const labeled = folded.match(/^pedido\s+(\d+)\b/);
-  if (labeled) return labeled[1];
-  const bare = folded.match(/^(\d+)\b/);
-  if (bare) return bare[1];
-  const slug = folded.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `label:${slug}`;
+  const match = folded.match(/^(?:pedido\s+)?(\d{1,6})\b([\s\S]*)$/);
+  if (!match) {
+    const slug = folded.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return slug ? `label:${slug}` : "";
+  }
+  const suffix = match[2].replace(/[^a-z0-9]+/g, "").slice(0, 24);
+  return suffix ? `${match[1]}:${suffix}` : match[1];
 }
 
 export async function addSheetRow(formData: FormData) {
   await requireTeam();
   const label = text(formData, "label");
   const origin = text(formData, "origin");
-  if (!label || !origin) redirect("/pedidos?aba=pedidos&erro=numero");
-  const orderKey = sheetKey(label);
-  const existing = await db()<{ id: string }[]>`select id from ctl_orders where order_key = ${orderKey} limit 1`;
-  if (existing.length > 0) {
-    redirect(`/pedidos?aba=pedidos&numero=${encodeURIComponent(orderKey)}&erro=duplicado`);
+  if (!label) redirect("/pedidos?aba=pedidos&erro=numero");
+  const wanted = shipmentKey(label);
+  if (!wanted) redirect("/pedidos?aba=pedidos&erro=numero");
+  const base = wanted.split(":")[0];
+  const taken = await db()<{ order_key: string }[]>`
+    select order_key from ctl_orders
+    where order_key = ${wanted} or order_key = ${base} or order_key like ${`${base}:%`}
+  `;
+  let orderKey = wanted;
+  if (taken.some((row) => row.order_key === wanted)) {
+    if (wanted.includes(":")) redirect(`/pedidos?aba=pedidos&numero=${encodeURIComponent(wanted)}&erro=duplicado`);
+    const used = taken.map((row) => {
+      const suffix = row.order_key.startsWith(`${base}:`) ? row.order_key.slice(base.length + 1) : "";
+      return /^\d+$/.test(suffix) ? Number(suffix) : 1;
+    });
+    orderKey = `${base}:${Math.max(1, ...used) + 1}`;
   }
   try {
     await insertRow("ctl_orders", {

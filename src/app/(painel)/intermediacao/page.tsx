@@ -37,7 +37,7 @@ function settledCell(settled: boolean | null) {
 export default async function IntermediacaoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; historico?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
@@ -69,10 +69,12 @@ export default async function IntermediacaoPage({
     order by (n.purchase_amount is null and n.payment_fee is null and n.shipping_cost is null), n.line_no
   `;
   const withMoney = notes.filter((note) => asNumber(note.purchase_amount) != null || asNumber(note.payment_fee) != null || asNumber(note.shipping_cost) != null);
+  const archived = notes.filter((note) => note.purchase_done && asNumber(note.purchase_amount) == null && asNumber(note.payment_fee) == null && asNumber(note.shipping_cost) == null);
+  const historico = params.historico === "1";
+  const shown = historico ? notes : notes.filter((note) => !archived.includes(note));
   const purchaseTotal = withMoney.reduce((sum, note) => sum + (asNumber(note.purchase_amount) ?? 0), 0);
   const feeTotal = withMoney.reduce((sum, note) => sum + (asNumber(note.payment_fee) ?? 0), 0);
   const freightTotal = withMoney.reduce((sum, note) => sum + (asNumber(note.shipping_cost) ?? 0), 0);
-  const done = notes.filter((note) => note.purchase_done).length;
   const saleTotal = withMoney.reduce((sum, note) => sum + (asNumber(note.order_sale) ?? 0), 0);
   const gainTotal = withMoney.reduce((sum, note) => sum + (asNumber(note.order_gain) ?? asNumber(note.gain_amount) ?? 0), 0);
 
@@ -82,7 +84,7 @@ export default async function IntermediacaoPage({
         <div>
           <h1 className="page-title">Notas de intermediação de {monthLabel(selected)}</h1>
           <p className="max-w-3xl text-sm text-muted">
-            A venda vem da ficha do pedido. O ganho é a venda menos a compra, a alfândega e o frete. {notes.length} {notes.length === 1 ? "linha" : "linhas"} neste mês{withMoney.length ? `, ${withMoney.length} com valor` : ""}.{done ? ` ${done} ${done === 1 ? "marcada" : "marcadas"} como feito, sem esses valores na planilha.` : ""}
+            A venda vem da ficha do pedido. O ganho é a venda menos a compra, a alfândega e o frete. {shown.length} {shown.length === 1 ? "linha" : "linhas"} neste mês{withMoney.length ? `, ${withMoney.length} com valor` : ""}.
           </p>
         </div>
         <nav className="flex flex-wrap gap-2">
@@ -93,6 +95,13 @@ export default async function IntermediacaoPage({
           ))}
         </nav>
       </div>
+      {archived.length ? (
+        <p className="text-sm text-muted">
+          {historico
+            ? <Link className="underline" href={`/intermediacao?month=${selected}`}>Ver só as notas do mês</Link>
+            : <Link className="underline" href={`/intermediacao?month=${selected}&historico=1`}>Ver histórico ({archived.length} marcadas como feito)</Link>}
+        </p>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <article className="card stat stat-cost">
@@ -140,7 +149,7 @@ export default async function IntermediacaoPage({
             </tr>
           </thead>
           <tbody>
-            {notes.map((note) => (
+            {shown.map((note) => (
               <tr key={note.id}>
                 <td>{note.order_label || note.label || note.order_key}</td>
                 <td>{note.platform || "—"}</td>

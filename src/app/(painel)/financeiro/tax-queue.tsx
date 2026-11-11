@@ -28,8 +28,11 @@ export async function TaxQueue({ status, error, ok }: { status?: string; error?:
         <h1 className="page-title">Fila manual de taxas</h1>
         <p className="text-muted">Confirme a cobrança em um pedido existente. Valor e pagamento são lançamentos separados.</p>
       </div>
-      <nav className="flex gap-2">
-        <Link className="button secondary" href="/financeiro">Resumo mensal</Link>
+      <nav className="flex flex-wrap gap-2">
+        <Link className="button secondary" href="/financeiro">Resumo</Link>
+        <Link className="button secondary" href="/financeiro?aba=pedidos">Pedidos do mês</Link>
+        <Link className="button secondary" href="/financeiro?aba=pendencias">Pendências</Link>
+        <Link className="button secondary" href="/financeiro?aba=impostos">Impostos</Link>
         <Link className="button" href="/financeiro?aba=taxas">Taxas</Link>
       </nav>
       {error ? <p className="text-sm text-danger">Não foi possível salvar. Confira o pedido, o valor e se há mais de um pedido com esse identificador.</p> : null}

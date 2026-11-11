@@ -12,7 +12,7 @@ function listedMonth(formData: FormData) {
   return month && /^\d{4}-\d{2}$/.test(month) ? month : "";
 }
 
-function go(month: string, flag?: "erro" | "ok") {
+function go(month: string, flag?: "erro" | "ok"): never {
   const query = new URLSearchParams();
   if (month) query.set("month", month);
   if (flag) query.set(flag, "1");

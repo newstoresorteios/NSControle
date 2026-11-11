@@ -2,7 +2,7 @@ import Link from "next/link";
 import { saveGoal } from "@/app/(painel)/financeiro/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { financeSlices, monthSummary } from "@/lib/finance";
+import { financeSlices, marginOnComplete, monthSummary } from "@/lib/finance";
 import { estimateLucroReal } from "@/lib/finance-lucro-real";
 import { refundTotal } from "@/lib/refunds";
 import { TaxQueue } from "./tax-queue";
@@ -35,7 +35,7 @@ function gapLabel(gap: Gap) {
 }
 
 function gapHref(month: string, current: Gap | null, gap: Gap) {
-  return current === gap ? `/financeiro?month=${month}` : `/financeiro?month=${month}&falta=${gap}`;
+  return current === gap ? `/financeiro?month=${month}&aba=pendencias` : `/financeiro?month=${month}&aba=pendencias&falta=${gap}`;
 }
 
 function plain(value: string | null) {
@@ -143,6 +143,8 @@ export default async function FinanceiroPage({
     .join(" · ");
   const lucroReal = estimateLucroReal(orders ?? [], { icmsCreditFactor });
   const falta = gapOf(params.falta);
+  const view = params.aba === "pedidos" || params.aba === "pendencias" || params.aba === "impostos" ? params.aba : "resumo";
+  const complete = marginOnComplete(orders ?? []);
   const incomplete = (orders ?? []).filter((order) => {
     const gaps = missingGaps(order);
     if (!gaps.length) return false;
@@ -173,8 +175,8 @@ export default async function FinanceiroPage({
         <div>
           <h1 className="page-title">Controle financeiro de {monthLabel(selected)}</h1>
           <p className="max-w-3xl text-sm text-muted">
-            Vendas e mês vêm do BI das lojas 687890 e 1490060. Frete, produto e rastreio vêm do TRAYadaptor.
-            Custo de compra, taxa da máquina, taxa de importação e o status Comprado ficam na ficha do pedido.
+            Vendas e mês vêm das lojas. Frete, produto e rastreio vêm do pedido. Custo de compra, taxa da máquina,
+            alfândega e o status da compra ficam na ficha.
           </p>
         </div>
         <form className="flex flex-wrap items-center gap-2" action="/financeiro">
@@ -190,11 +192,9 @@ export default async function FinanceiroPage({
       </div>
       {params.erro ? <p className="text-sm text-danger">Não foi possível salvar a meta.</p> : null}
 
-      <nav className="flex gap-2">
-        <Link className="button" href={`/financeiro?month=${selected}`}>Resumo mensal</Link>
-        <Link className="button secondary" href="/financeiro?aba=taxas">Taxas</Link>
-      </nav>
+      <FinanceTabs month={selected} view={view} />
 
+      {view === "resumo" ? <>
       <section className="grid gap-3 sm:grid-cols-3">
         <article className="card stat stat-sale">
           <p className="kicker">Venda</p>
@@ -214,7 +214,10 @@ export default async function FinanceiroPage({
           <p className={`num mt-2 text-3xl font-medium tracking-tight ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
             {brl(summary.resultado)}
           </p>
-          <p className="mt-1 text-sm text-muted">Margem {percent(summary.margem)}. Vazio entra como zero.</p>
+          <p className={`mt-1 text-sm ${summary.semCompra ? "text-warn" : "text-muted"}`}>
+            {summary.semCompra ? `Lucro parcial — ${pedidos(summary.semCompra)} sem compra. ` : ""}
+            Margem dos pedidos completos {percent(complete.margem)}.
+          </p>
         </article>
       </section>
 
@@ -260,7 +263,12 @@ export default async function FinanceiroPage({
           </table>
         </section>
       ) : null}
+      {slices.some((slice) => slice.summary.vendas === 0 && slice.summary.custoTotal > 0) ? (
+        <p className="text-sm text-muted">Sob encomenda com custo e sem venda neste mês reduz o lucro. A divisão entre loja nova e sob encomenda continua a da ficha.</p>
+      ) : null}
+      </> : null}
 
+      {view === "resumo" || view === "pendencias" ? (
       <section className="grid gap-3 sm:grid-cols-3">
         <GapCard
           href={gapHref(selected, falta, "compra")}
@@ -281,7 +289,9 @@ export default async function FinanceiroPage({
           active={falta === "envio"}
         />
       </section>
+      ) : null}
 
+      {view === "pendencias" ? (
       <section className="card overflow-x-auto">
         <h2 className="section-title">
           {falta === "compra"
@@ -334,6 +344,9 @@ export default async function FinanceiroPage({
           </table>
         ) : null}
       </section>
+      ) : null}
+
+      {view === "resumo" ? <>
       <section className="card overflow-x-auto">
         <h2 className="section-title">Resultado financeiro</h2>
         <table className="mt-3">
@@ -371,7 +384,9 @@ export default async function FinanceiroPage({
         {importTaxesWithoutAmount ? <p className="mt-2 text-sm text-danger">Há {pedidos(importTaxesWithoutAmount)} com taxação identificada e valor ainda não informado.</p> : null}
         {negativeCosts ? <p className="mt-2 text-sm text-danger">Há {pedidos(negativeCosts)} com custo negativo registrado. Confira a origem e o sinal antes de validar este resultado.</p> : null}
       </section>
+      </> : null}
 
+      {view === "impostos" ? (
       <section className="card overflow-x-auto">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -385,13 +400,13 @@ export default async function FinanceiroPage({
           <div className="flex gap-2">
             <Link
               className={`button ${icmsCreditFactor === 1 ? "" : "secondary"}`}
-              href={`/financeiro?month=${selected}&icms=100`}
+              href={`/financeiro?month=${selected}&aba=impostos&icms=100`}
             >
               ICMS crédito 100%
             </Link>
             <Link
               className={`button ${icmsCreditFactor === 0.7 ? "" : "secondary"}`}
-              href={`/financeiro?month=${selected}&icms=70`}
+              href={`/financeiro?month=${selected}&aba=impostos&icms=70`}
             >
               ICMS crédito 70%
             </Link>
@@ -449,7 +464,9 @@ export default async function FinanceiroPage({
           aplicado: {Math.round(lucroReal.icmsCreditFactor * 100)}% do ideal sobre o CMV.
         </p>
       </section>
+      ) : null}
 
+      {view === "resumo" ? <>
       <section className="card">
         <h2 className="section-title">Reembolsos realizados em {monthLabel(selected)}</h2>
         <p className="mt-2 num text-danger">{brl(refunded)}</p>
@@ -483,14 +500,17 @@ export default async function FinanceiroPage({
             {brl(summary.mediaARealizar)}.
           </p>
         </div>
-        <form action={saveGoal} className="grid content-start gap-2">
-          <input type="hidden" name="month" value={selected} />
-          <label className="grid gap-1 text-sm">
-            Meta do mês
-            <input name="target_amount" defaultValue={goal?.target_amount ?? ""} required />
-          </label>
-          <button type="submit">Atualizar meta</button>
-        </form>
+        <details className="grid content-start gap-2">
+          <summary className="cursor-pointer text-sm underline">Alterar meta {goal ? brl(goal.target_amount) : ""}</summary>
+          <form action={saveGoal} className="mt-2 grid gap-2">
+            <input type="hidden" name="month" value={selected} />
+            <label className="grid gap-1 text-sm">
+              Meta do mês
+              <input name="target_amount" defaultValue={goal?.target_amount ?? ""} required />
+            </label>
+            <button type="submit">Atualizar meta</button>
+          </form>
+        </details>
       </section>
 
       <section className="card overflow-x-auto">
@@ -531,7 +551,9 @@ export default async function FinanceiroPage({
         </table>
         <p className="mt-3 text-sm text-muted">Cada média usa só as linhas em que o valor foi lançado.</p>
       </section>
+      </> : null}
 
+      {view === "pedidos" ? (
       <div className="card overflow-x-auto">
         <h2 className="section-title">Linhas do mês</h2>
         <table className="mt-3">
@@ -571,6 +593,30 @@ export default async function FinanceiroPage({
           </tbody>
         </table>
       </div>
+      ) : null}
     </div>
+  );
+}
+
+function FinanceTabs({ month, view }: { month: string; view: string }) {
+  const tabs = [
+    ["resumo", "Resumo"],
+    ["pedidos", "Pedidos do mês"],
+    ["pendencias", "Pendências"],
+    ["impostos", "Impostos"],
+    ["taxas", "Taxas"],
+  ] as const;
+  return (
+    <nav className="flex flex-wrap gap-2">
+      {tabs.map(([id, label]) => (
+        <Link
+          key={id}
+          className={view === id ? "button" : "button secondary"}
+          href={id === "resumo" ? `/financeiro?month=${month}` : `/financeiro?month=${month}&aba=${id}`}
+        >
+          {label}
+        </Link>
+      ))}
+    </nav>
   );
 }

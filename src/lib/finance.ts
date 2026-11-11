@@ -141,6 +141,31 @@ export function monthSummary(
   };
 }
 
+const STORE_LABEL: Record<string, string> = {
+  "687890": "New Store",
+  "1490060": "NS Relógios",
+};
+
+function storeLabel(id: string) {
+  return STORE_LABEL[id] ?? id;
+}
+
+export function marginOnComplete(orders: MoneyOrder[]) {
+  const complete = orders.filter((order) => asNumber(order.sale_amount) != null && asNumber(order.purchase_amount) != null);
+  const vendas = complete.reduce((total, order) => total + (asNumber(order.sale_amount) ?? 0), 0);
+  const custo = complete.reduce(
+    (total, order) =>
+      total +
+      (asNumber(order.purchase_amount) ?? 0) +
+      (asNumber(order.payment_fee) ?? 0) +
+      (asNumber(order.shipping_cost) ?? 0) +
+      (asNumber(order.import_tax) ?? 0),
+    0,
+  );
+  const resultado = vendas - custo;
+  return { count: complete.length, vendas, resultado, margem: vendas > 0 ? resultado / vendas : null };
+}
+
 const EXTRA_FLOW: Record<string, string> = {
   encomenda: "Sob encomenda",
   ns_creditos: "NS Créditos",
@@ -163,7 +188,7 @@ export function financeSlices(
       const detected = key ? trayStoreOf({ order_key: key, label: order.label }) : null;
       const prefixed = /^(\d{6,}):/.exec(key);
       const store = detected ?? prefixed?.[1] ?? PRIMARY_STORE;
-      put(store, store, order);
+      put(store, storeLabel(store), order);
       continue;
     }
     put(`flow:${order.flow}`, EXTRA_FLOW[order.flow] ?? order.flow, order);

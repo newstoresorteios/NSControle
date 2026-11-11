@@ -125,7 +125,7 @@ test("separa as duas lojas e mantém a soma no total", () => {
     { flow: "encomenda", order_key: "E1", sale_amount: 20, purchase_amount: 8, payment_fee: null, shipping_cost: null, import_tax: null },
   ];
   const slices = financeSlices(orders, "2026-11", new Date(2026, 10, 10));
-  assert.deepEqual(slices.map((slice) => slice.label), ["687890", "1490060", "Sob encomenda"]);
+  assert.deepEqual(slices.map((slice) => slice.label), ["New Store", "NS Relógios", "Sob encomenda"]);
   close(slices[0].summary.vendas, 100);
   close(slices[0].summary.custoTotal, 50);
   close(slices[0].summary.resultado, 50);

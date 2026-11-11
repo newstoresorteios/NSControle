@@ -4,6 +4,7 @@ import { updateOrder } from "@/app/(painel)/pedidos/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl, money, shortDate } from "@/lib/format";
+import { COMMERCIAL_STATUSES, ORIGINS, SOURCING_STATUSES, withCurrent } from "@/lib/lists";
 import { ensureOrderCustomer, type OrderCustomer } from "@/lib/order-customer";
 
 export default async function PedidoPage({
@@ -86,11 +87,11 @@ export default async function PedidoPage({
             <option value="ns_creditos">NS Créditos</option>
           </select>
         </label>
-        <Field label="Origem" name="origin" defaultValue={order.origin} />
+        <Choice label="Origem" name="origin" value={order.origin} options={ORIGINS} />
         <Field label="Referência" name="reference" defaultValue={order.reference} />
         <Field label="Produto" name="product_name" defaultValue={order.product_name} />
-        <Field label="Status comercial" name="commercial_status" defaultValue={order.commercial_status} />
-        <Field label="Status da compra" name="sourcing_status" defaultValue={order.sourcing_status} />
+        <Choice label="Status comercial" name="commercial_status" value={order.commercial_status} options={COMMERCIAL_STATUSES} />
+        <Choice label="Status da compra" name="sourcing_status" value={order.sourcing_status} options={SOURCING_STATUSES} />
         <label className="grid gap-1 text-sm">
           Mês financeiro
           <input name="finance_month" type="month" defaultValue={monthValue} />
@@ -196,6 +197,30 @@ function Field({
     <label className="grid gap-1 text-sm">
       {label}
       <input name={name} type={type} defaultValue={defaultValue ?? ""} required={required} />
+    </label>
+  );
+}
+
+function Choice({
+  label,
+  name,
+  value,
+  options,
+}: {
+  label: string;
+  name: string;
+  value: string | null;
+  options: readonly string[];
+}) {
+  return (
+    <label className="grid gap-1 text-sm">
+      {label}
+      <select name={name} defaultValue={value ?? ""}>
+        <option value="">—</option>
+        {withCurrent(options, value).map((item) => (
+          <option key={item} value={item}>{item}</option>
+        ))}
+      </select>
     </label>
   );
 }
