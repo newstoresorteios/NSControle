@@ -9,6 +9,7 @@ export const PRIMARY_STORE = "687890";
 export type MoneyOrder = {
   flow: string;
   order_key?: string | null;
+  label?: string | null;
   sale_amount: unknown;
   purchase_amount: unknown;
   payment_fee: unknown;
@@ -51,6 +52,24 @@ export type MonthSummary = {
   elapsed: number;
   daysInMonth: number;
 };
+
+export function trayStoreOf(order: { order_key: string; label?: string | null }): "687890" | "1490060" | null {
+  const qualified = /^(\d+):(\d+)$/.exec(order.order_key);
+  if (qualified?.[1] === "1490060" || (order.label || "").includes("1490060")) return "1490060";
+  if (qualified) return null;
+  return /^\d+$/.test(order.order_key) ? "687890" : null;
+}
+
+export function salesByTrayStore(orders: Array<MoneyOrder & { order_key: string; label?: string | null }>) {
+  const totals: Record<"687890" | "1490060", number> = { "687890": 0, "1490060": 0 };
+  for (const order of orders) {
+    if (order.flow !== "loja_nova") continue;
+    const store = trayStoreOf(order);
+    if (!store) continue;
+    totals[store] += asNumber(order.sale_amount) ?? 0;
+  }
+  return totals;
+}
 
 function sum(orders: MoneyOrder[], flow: string | null, field: keyof MoneyOrder) {
   return orders
@@ -164,13 +183,12 @@ export function financeSlices(
     buckets.set(key, bucket);
   };
   for (const order of orders) {
-    const prefixed = /^(\d{6,}):/.exec(String(order.order_key ?? ""));
-    if (prefixed) {
-      put(prefixed[1], storeLabel(prefixed[1]), order);
-      continue;
-    }
     if (order.flow === "loja_nova") {
-      put(PRIMARY_STORE, storeLabel(PRIMARY_STORE), order);
+      const key = String(order.order_key ?? "");
+      const detected = key ? trayStoreOf({ order_key: key, label: order.label }) : null;
+      const prefixed = /^(\d{6,}):/.exec(key);
+      const store = detected ?? prefixed?.[1] ?? PRIMARY_STORE;
+      put(store, storeLabel(store), order);
       continue;
     }
     put(`flow:${order.flow}`, EXTRA_FLOW[order.flow] ?? order.flow, order);

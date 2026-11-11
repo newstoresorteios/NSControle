@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { financeSlices, monthSummary, type MoneyOrder } from "./finance.ts";
+import { financeSlices, monthSummary, salesByTrayStore, type MoneyOrder } from "./finance.ts";
 import { refundTotal } from "./refunds.ts";
 
 function close(actual: number | null, expected: number) {
@@ -14,6 +14,17 @@ const blank = {
   shipping_cost: null,
   import_tax: null,
 };
+
+test("vendas da loja nova separam 687890 e 1490060", () => {
+  const totals = salesByTrayStore([
+    { order_key: "26726", flow: "loja_nova", sale_amount: 100, ...blank },
+    { order_key: "1490060:479", flow: "loja_nova", sale_amount: 40, ...blank },
+    { order_key: "477", label: "Pedido 477 · 1490060", flow: "loja_nova", sale_amount: 10, ...blank },
+    { order_key: "encomenda-1", flow: "encomenda", sale_amount: 80, ...blank },
+  ]);
+  close(totals["687890"], 100);
+  close(totals["1490060"], 50);
+});
 
 test("agosto só com encomenda fecha como o cabeçalho da planilha", () => {
   const orders: MoneyOrder[] = [
@@ -109,7 +120,8 @@ test("cenário sintético deduz cada taxa uma vez e mostra devolução no mês r
 test("separa as duas lojas e mantém a soma no total", () => {
   const orders: MoneyOrder[] = [
     { flow: "loja_nova", order_key: "26736", sale_amount: 100, purchase_amount: 40, payment_fee: null, shipping_cost: 10, import_tax: null },
-    { flow: "loja_nova", order_key: "1490060:475", sale_amount: 50, purchase_amount: null, payment_fee: null, shipping_cost: 5, import_tax: null },
+    { flow: "loja_nova", order_key: "1490060:475", sale_amount: 40, purchase_amount: null, payment_fee: null, shipping_cost: 5, import_tax: null },
+    { flow: "loja_nova", order_key: "477", label: "Pedido 477 · 1490060", sale_amount: 10, purchase_amount: null, payment_fee: null, shipping_cost: null, import_tax: null },
     { flow: "encomenda", order_key: "E1", sale_amount: 20, purchase_amount: 8, payment_fee: null, shipping_cost: null, import_tax: null },
   ];
   const slices = financeSlices(orders, "2026-11", new Date(2026, 10, 10));
