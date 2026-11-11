@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { syncCorreiosNow } from "@/app/(painel)/correios-actions";
 import { syncTrayNow } from "@/app/(painel)/tray-actions";
 import { SyncButton, SyncStatus } from "@/components/sync-button";
-import { correiosConfigured } from "@/lib/correios-client";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { financeSlices, monthSummary } from "@/lib/finance";
@@ -22,14 +20,6 @@ const SYNC_MESSAGE: Record<string, string> = {
   limite: "A Tray pediu uma pausa. A próxima rodada continua de onde parou.",
   erro: "Não foi possível falar com o TRAYadaptor.",
   nao_configurado: "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN.",
-};
-
-const CORREIOS_MESSAGE: Record<string, string> = {
-  ok: "Rastreios atualizados.",
-  aguardando: "Uma leitura dos Correios já está em andamento.",
-  limite: "Os Correios pediram uma pausa.",
-  erro: "Não foi possível falar com a API Rastro.",
-  nao_configurado: "Falta usuário, senha ou cartão de postagem dos Correios.",
 };
 
 function saoPauloMonth(now = new Date()) {
@@ -83,17 +73,6 @@ function lojaLine(sync: { last_run_at: string | null; last_report: { upserted?: 
   return `Loja lida ${stamp}.${novos}${cancel}`;
 }
 
-function correiosLine(sync: { last_run_at: string | null; last_report: { updated?: number; missing?: number } | null } | null) {
-  const stamp = readStamp(sync?.last_run_at ?? null);
-  if (!stamp) return "Ainda não houve leitura dos Correios.";
-  const updated = sync?.last_report?.updated;
-  const status =
-    updated == null ? "" : updated === 0 ? " Nenhum status novo." : updated === 1 ? " 1 status novo." : ` ${updated} status novos.`;
-  const missing = sync?.last_report?.missing ?? 0;
-  const outside = missing > 0 ? ` ${missing} fora do contrato.` : "";
-  return `Correios lidos ${stamp}.${status}${outside}`;
-}
-
 function trayNotice(sync?: string, pedidos?: string): { message: string; tone: "ok" | "danger" | "muted" } | null {
   if (!sync || !SYNC_MESSAGE[sync]) return null;
   if (sync === "ok") {
@@ -106,43 +85,21 @@ function trayNotice(sync?: string, pedidos?: string): { message: string; tone: "
   return { message: SYNC_MESSAGE[sync], tone };
 }
 
-function correiosNotice(sync?: string, rastreios?: string): { message: string; tone: "ok" | "danger" | "muted" } | null {
-  if (!sync || !CORREIOS_MESSAGE[sync]) return null;
-  if (sync === "ok") {
-    const count = Number(rastreios ?? 0);
-    const saved =
-      count > 0 ? `${count} ${count === 1 ? "status gravado" : "status gravados"}.` : "Nenhum status novo nesta rodada.";
-    return { message: `Rastreios atualizados. ${saved}`, tone: "ok" };
-  }
-  const tone = sync === "erro" || sync === "nao_configurado" || sync === "limite" ? "danger" : "muted";
-  return { message: CORREIOS_MESSAGE[sync], tone };
-}
-
-function orderNumber(orderKey: string, label: string | null) {
-  return /^\d{4,6}$/.test(orderKey) ? orderKey : label || orderKey;
-}
-
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ sync?: string; pedidos?: string; correios?: string; rastreios?: string }>;
+  searchParams: Promise<{ sync?: string; pedidos?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
   const configured = trayConfigured();
-  const correiosReady = correiosConfigured();
   const month = saoPauloMonth();
   const monthDate = `${month}-01`;
   const sql = db();
-  const [syncRows, correiosRows, countRows, alerts, goalRows, moneyRows] = await Promise.all([
+  const [syncRows, countRows, goalRows, moneyRows] = await Promise.all([
     sql<{ last_run_at: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
       select last_run_at, last_report from ctl_tray_sync
       where id = 'orders'
-      limit 1
-    `,
-    sql<{ last_run_at: string | null; last_report: { updated?: number; missing?: number } | null }[]>`
-      select last_run_at, last_report from ctl_tray_sync
-      where id = 'correios'
       limit 1
     `,
     sql<{ vindi: number; devolucao: number; alfandega: number; sem_retorno: number }[]>`
@@ -152,31 +109,6 @@ export default async function HomePage({
         count(*) filter (where tracking_situation ilike '%ALF%')::int as alfandega,
         count(*) filter (where tracking_situation ilike '%Sem retorno%')::int as sem_retorno
       from ctl_orders
-    `,
-    sql<{
-      id: string;
-      label: string | null;
-      order_key: string;
-      tracking_situation: string | null;
-      tracking_correios: string | null;
-      tracking_alert: string | null;
-      tracking_code: string | null;
-    }[]>`
-      select id, label, order_key, tracking_situation, tracking_correios, tracking_alert, tracking_code
-      from ctl_orders
-      where tracking_situation ilike '%DEVOLU%'
-        or tracking_situation ilike '%ALF%'
-        or tracking_situation ilike '%PROBLEMA%'
-        or tracking_situation ilike '%Sem retorno%'
-      order by
-        case
-          when tracking_situation ilike '%DEVOLU%' then 0
-          when tracking_situation ilike '%PROBLEMA%' then 1
-          when tracking_situation ilike '%ALF%' then 2
-          else 3
-        end,
-        tracking_event_at desc nulls last
-      limit 12
     `,
     sql<{ target_amount: string }[]>`
       select target_amount from ctl_monthly_goals
@@ -200,9 +132,7 @@ export default async function HomePage({
   const tally = countRows[0];
   const counts = QUEUES.map((queue) => tally?.[queue.id] ?? 0);
   const sync = syncRows[0] ?? null;
-  const correios = correiosRows[0] ?? null;
   const trayResult = trayNotice(params.sync, params.pedidos);
-  const correiosResult = correiosNotice(params.correios, params.rastreios);
   const summary = monthSummary(moneyRows ?? [], asNumber(goalRows[0]?.target_amount), month);
   const slices = financeSlices(moneyRows ?? [], month);
 
@@ -232,60 +162,6 @@ export default async function HomePage({
             </Link>
           ))}
         </div>
-      </section>
-
-      <section className="card overflow-x-auto">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="section-title">Casos</h2>
-            <p className="mt-1 text-sm text-muted">
-              {correiosReady ? correiosLine(correios) : "Falta usuário, senha ou cartão de postagem dos Correios."}
-            </p>
-          </div>
-          {correiosReady ? (
-            <form action={syncCorreiosNow} className="grid justify-items-end gap-2">
-              <SyncButton idle="Atualizar rastreios" pendingLabel="Atualizando…" />
-              <SyncStatus
-                pendingLabel="Lendo os Correios…"
-                message={correiosResult?.message ?? null}
-                tone={correiosResult?.tone ?? "muted"}
-              />
-            </form>
-          ) : null}
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Situação</th>
-              <th>Alerta</th>
-            </tr>
-          </thead>
-          <tbody>
-            {alerts.map((order) => (
-              <tr key={order.id}>
-                <td>
-                  <Link href={`/pedidos/${order.id}`} className="num underline">
-                    {orderNumber(order.order_key, order.label)}
-                  </Link>
-                  {order.tracking_code ? <div className="num text-sm text-muted">{order.tracking_code}</div> : null}
-                </td>
-                <td>{order.tracking_situation || "—"}</td>
-                <td>
-                  <div>{order.tracking_alert || order.tracking_correios || "—"}</div>
-                  {order.tracking_alert && order.tracking_correios && order.tracking_alert !== order.tracking_correios ? (
-                    <div className="text-sm text-muted">{order.tracking_correios}</div>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-            {!alerts.length ? (
-              <tr>
-                <td colSpan={3}>Nenhum caso de devolução, alfândega, problema ou sem retorno.</td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
       </section>
 
       <section className="card overflow-x-auto">
