@@ -68,13 +68,10 @@ export function draftFromBi(order: BiOrder, shipment?: BiShipment): TrayDraft | 
   if (!base) return null;
   if (shipment?.shipmentStatus === "delivered" || shipment?.deliveredAt) {
     base.delivered = true;
-    base.commercial_status = "FINALIZADO";
   } else if (shipment?.shipmentStatus === "shipped" || shipment?.shippedAt) {
-    base.commercial_status = "ENVIADO";
     base.delivered = false;
-  } else if (!CANCELLED.has(status)) {
-    base.commercial_status = null;
   }
+  if (!CANCELLED.has(status)) base.commercial_status = null;
   const issued = dateOnly(order.date);
   base.finance_month = monthStart(issued);
   base.notes_tray = ["BI", text(order.customerName), text(shipment?.city), text(shipment?.shippingMethod)]

@@ -4,7 +4,7 @@ import { createInventoryItem, updateInventoryItem } from "@/app/(painel)/estoque
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl } from "@/lib/format";
-import { INVENTORY_BRANDS, INVENTORY_LOCATIONS, INVENTORY_ORIGINS, INVENTORY_STATUSES, withCurrent } from "@/lib/lists";
+import { canonicalOption, INVENTORY_BRANDS, INVENTORY_LOCATIONS, INVENTORY_ORIGINS, INVENTORY_STATUSES, withCurrent } from "@/lib/lists";
 
 export default async function EstoquePage({
   searchParams,
@@ -37,8 +37,8 @@ export default async function EstoquePage({
   `;
   const query = (params.q || "").trim().toLowerCase();
   const visible = items.filter((item) => {
-    if (params.marca && (item.brand || "") !== params.marca) return false;
-    if (params.origem && (item.origin || "") !== params.origem) return false;
+    if (params.marca && canonicalOption(INVENTORY_BRANDS, item.brand) !== params.marca) return false;
+    if (params.origem && canonicalOption(INVENTORY_ORIGINS, item.origin) !== params.origem) return false;
     if (params.status && (item.status || "") !== params.status) return false;
     if (!query) return true;
     return [item.brand, item.model, item.origin, item.tracking_code, item.location, item.notes].join(" ").toLowerCase().includes(query);
@@ -48,7 +48,7 @@ export default async function EstoquePage({
   const saleTotal = priced.reduce((sum, value) => sum + value, 0);
   const costTotal = costs.reduce((sum, value) => sum + value, 0);
   const missingCost = visible.filter((item) => asNumber(item.sale_price) != null && asNumber(item.cost) == null).length;
-  const brands = [...new Set(visible.map((item) => item.brand || "Sem marca"))];
+  const brands = [...new Set(visible.map((item) => canonicalOption(INVENTORY_BRANDS, item.brand) || "Sem marca"))];
   const kept = new URLSearchParams();
   for (const key of ["q", "marca", "origem", "status"] as const) if (params[key]) kept.set(key, params[key]);
   const listHref = `/estoque?${kept.toString()}#lista-estoque`;
@@ -84,8 +84,8 @@ export default async function EstoquePage({
       </details>
       <form className="card flex flex-wrap items-end gap-3" action="/estoque">
         <label className="grid gap-1 text-sm">Busca<input name="q" defaultValue={params.q ?? ""} placeholder="marca, modelo, rastreio" /></label>
-        <SelectField label="Marca" name="marca" value={params.marca ?? ""} options={[...new Set([...INVENTORY_BRANDS, ...items.map((item) => item.brand || "").filter(Boolean)])]} />
-        <SelectField label="Origem" name="origem" value={params.origem ?? ""} options={INVENTORY_ORIGINS} />
+        <SelectField label="Marca" name="marca" value={params.marca ?? ""} options={listedOptions(INVENTORY_BRANDS, items.map((item) => item.brand))} />
+        <SelectField label="Origem" name="origem" value={params.origem ?? ""} options={listedOptions(INVENTORY_ORIGINS, items.map((item) => item.origin))} />
         <SelectField label="Status" name="status" value={params.status ?? ""} options={INVENTORY_STATUSES} />
         <button type="submit">Filtrar</button>
         {params.q || params.marca || params.origem || params.status ? <Link className="button secondary" href="/estoque">Limpar</Link> : null}
@@ -107,7 +107,7 @@ export default async function EstoquePage({
           </thead>
           <tbody>
             {brands.map((brand) => {
-              const group = visible.filter((item) => (item.brand || "Sem marca") === brand);
+              const group = visible.filter((item) => (canonicalOption(INVENTORY_BRANDS, item.brand) || "Sem marca") === brand);
               const groupSale = group.reduce((sum, item) => sum + (asNumber(item.sale_price) ?? 0), 0);
               const groupCost = group.reduce((sum, item) => sum + (asNumber(item.cost) ?? 0), 0);
               return (
@@ -118,9 +118,9 @@ export default async function EstoquePage({
                 {group.map((item) => (
               <Fragment key={item.id}>
                 <tr>
-                  <td>{item.brand || "—"}</td>
+                  <td>{canonicalOption(INVENTORY_BRANDS, item.brand) || "—"}</td>
                   <td>{item.model}</td>
-                  <td>{item.origin || "—"}</td>
+                  <td>{canonicalOption(INVENTORY_ORIGINS, item.origin) || "—"}</td>
                   <td>{item.location || "—"}</td>
                   <td>{item.status || "—"}</td>
                   <td className="num">{item.sale_price_note || brl(item.sale_price)}</td>
@@ -152,9 +152,9 @@ export default async function EstoquePage({
                         </div>
                         <form action={updateInventoryItem} className="grid gap-4 md:grid-cols-2">
                           <input type="hidden" name="id" value={item.id} />
-                          <SelectField label="Marca" name="brand" value={item.brand} options={INVENTORY_BRANDS} />
+                          <SelectField label="Marca" name="brand" value={canonicalOption(INVENTORY_BRANDS, item.brand)} options={INVENTORY_BRANDS} />
                           <label className="grid gap-1 text-sm">Modelo<input name="model" defaultValue={item.model} required /></label>
-                          <SelectField label="Origem" name="origin" value={item.origin} options={INVENTORY_ORIGINS} />
+                          <SelectField label="Origem" name="origin" value={canonicalOption(INVENTORY_ORIGINS, item.origin)} options={INVENTORY_ORIGINS} />
                           <label className="grid gap-1 text-sm">Rastreio<input name="tracking_code" defaultValue={item.tracking_code ?? ""} /></label>
                           <label className="grid gap-1 text-sm">Preço PIX<input name="sale_price" defaultValue={item.sale_price ?? ""} inputMode="decimal" /></label>
                           <label className="grid gap-1 text-sm">Custo<input name="cost" defaultValue={item.cost ?? ""} inputMode="decimal" /></label>
@@ -181,6 +181,18 @@ export default async function EstoquePage({
       </div>
     </div>
   );
+}
+
+function listedOptions(base: readonly string[], values: Array<string | null>) {
+  const seen = new Set<string>();
+  const options: string[] = [];
+  for (const value of [...base, ...values]) {
+    const label = canonicalOption(base, value);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    options.push(label);
+  }
+  return options;
 }
 
 function SelectField({ label, name, value, options }: { label: string; name: string; value: string | null; options: readonly string[] }) {

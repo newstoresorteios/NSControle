@@ -36,17 +36,16 @@ export default function CalculadoraPage() {
 
   const paid = useMemo(() => {
     const installment = number(parcelado);
-    const net = installment - number(gift) - number(tradeIn);
-    return { net, pix: net * (1 - number(pixOff) / 100) };
+    const pixBase = installment * (1 - number(pixOff) / 100);
+    return { pixBase, pix: pixBase - number(gift) - number(tradeIn) };
   }, [parcelado, gift, tradeIn, pixOff]);
 
   const watches = useMemo(() => {
     const first = number(watchA);
     const second = number(watchB);
-    const cash = first * (1 - number(cashOff) / 100);
-    const pix = cash * (1 - number(pixOff) / 100);
-    return { cash, pix, difference: first - second };
-  }, [watchA, watchB, cashOff, pixOff]);
+    const discount = first * (number(cashOff) / 100);
+    return { discount, pix: first - discount, difference: first - second };
+  }, [watchA, watchB, cashOff]);
 
   return (
     <div className="grid gap-5">
@@ -90,8 +89,8 @@ export default function CalculadoraPage() {
           <NumberField label="Relógio de entrada" value={tradeIn} onChange={setTradeIn} />
         </div>
         <div className="grid content-end gap-2">
-          <p>Parcelado menos cartão e entrada: {brl(paid.net)}</p>
-          <p className="text-2xl font-medium tracking-tight">O mesmo no PIX ({pixOff}%): {brl(paid.pix)}</p>
+          <p>PIX sobre o parcelado: {brl(paid.pixBase)}</p>
+          <p className="text-2xl font-medium tracking-tight">PIX depois de cartão e entrada: {brl(paid.pix)}</p>
         </div>
       </section>
       <section className="card grid gap-4 md:grid-cols-2">
@@ -102,8 +101,8 @@ export default function CalculadoraPage() {
           <NumberField label="Segundo preço" value={watchB} onChange={setWatchB} />
         </div>
         <div className="grid content-end gap-2">
-          <p>Desconto à vista: {brl(watches.cash)}</p>
-          <p>Total no PIX: {brl(watches.pix)}</p>
+          <p>Desconto à vista: {brl(watches.discount)}</p>
+          <p className="text-2xl font-medium tracking-tight">Total no PIX: {brl(watches.pix)}</p>
           <p className="text-2xl font-medium tracking-tight">Diferença entre os dois preços: {brl(watches.difference)}</p>
         </div>
       </section>

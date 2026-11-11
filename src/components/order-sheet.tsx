@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { patchOrder, requestAnaPurchase } from "@/app/(painel)/pedidos/actions";
 import { shortDate } from "@/lib/format";
-import { COMMERCIAL_STATUSES, ORIGINS, shipmentLabel, withCurrent } from "@/lib/lists";
+import { canonicalOption, COMMERCIAL_STATUSES, ORIGINS, shipmentLabel, withCurrent } from "@/lib/lists";
 
 export type SheetMode = "pedidos" | "acompanhamento" | "rastreio" | "entregues";
 
@@ -122,7 +122,7 @@ function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; ret
     <>
       <OrderCell row={row} status={save.status} pin={ana} />
       <td>
-        {editing ? <ChoiceCell name="origin" value={row.origin} options={ORIGINS} onSave={save.run} /> : clip(row.origin)}
+        {editing ? <ChoiceCell name="origin" value={canonicalOption(ORIGINS, row.origin)} options={ORIGINS} onSave={save.run} /> : clip(canonicalOption(ORIGINS, row.origin))}
       </td>
       {ana ? (
         <td className="pin pin-ana">
@@ -165,13 +165,13 @@ function AcompanhamentoHead() {
       <th>Pagamento</th>
       <th>Status</th>
       <th>Rastreio</th>
+      <th>Fornecedor</th>
+      <th>Nome do fornecedor</th>
+      <th>Compra ao fornecedor</th>
       <th>Produto</th>
       <th>Obs internas</th>
       <th>Dias</th>
       <th>Dias fornecedor</th>
-      <th>Fornecedor</th>
-      <th>Nome do fornecedor</th>
-      <th>Compra ao fornecedor</th>
       <th></th>
     </>
   );
@@ -215,6 +215,9 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
         )}
       </td>
       <td>{editing ? <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} /> : clip(row.tracking_code)}</td>
+      <td>{editing ? <ChoiceCell name="origin" value={canonicalOption(ORIGINS, row.origin)} options={ORIGINS} onSave={save.run} /> : clip(canonicalOption(ORIGINS, row.origin))}</td>
+      <td>{editing ? <TextCell name="supplier_name" value={row.supplier_name} onSave={save.run} /> : clip(row.supplier_name)}</td>
+      <td>{editing ? <DateCell name="supplier_purchase_date" value={row.supplier_purchase_date} onSave={save.run} /> : shortDate(row.supplier_purchase_date)}</td>
       <td className="wide">{editing ? <TextCell name="product_name" value={row.product_name} onSave={save.run} /> : clip(row.product_name)}</td>
       <td className="wide">{editing ? <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} /> : clip(row.notes_internal)}</td>
       <td className={`num ${late ? "text-danger font-medium" : ""}`}>{row.days_open ?? "—"}</td>
@@ -235,9 +238,6 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
           row.supplier_days ?? "—"
         )}
       </td>
-      <td>{editing ? <ChoiceCell name="origin" value={row.origin} options={ORIGINS} onSave={save.run} /> : clip(row.origin)}</td>
-      <td>{editing ? <TextCell name="supplier_name" value={row.supplier_name} onSave={save.run} /> : clip(row.supplier_name)}</td>
-      <td>{editing ? <DateCell name="supplier_purchase_date" value={row.supplier_purchase_date} onSave={save.run} /> : shortDate(row.supplier_purchase_date)}</td>
       <td><EditButton editing={editing} onClick={() => setEditing((value) => !value)} /></td>
     </>
   );
