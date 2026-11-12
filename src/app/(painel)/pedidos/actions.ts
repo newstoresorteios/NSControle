@@ -215,6 +215,13 @@ export async function patchOrder(id: string, raw: Record<string, unknown>) {
   }
 
   if (Object.keys(patch).length === 0) return { ok: true as const };
+  if (patch.commercial_status === "ENVIADO") {
+    const [current] = await db()<{ tracking_code: string | null; delivered: boolean }[]>`
+      select tracking_code, delivered from ctl_orders where id = ${id}
+    `;
+    const tracking = (typeof patch.tracking_code === "string" ? patch.tracking_code : current?.tracking_code || "").trim();
+    if (!tracking && !current?.delivered) return { ok: false as const };
+  }
   try {
     await updateRow("ctl_orders", patch, "id", id);
   } catch {

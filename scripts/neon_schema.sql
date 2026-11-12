@@ -94,6 +94,30 @@ create trigger ctl_orders_touch
 before update on public.ctl_orders
 for each row execute function public.ctl_touch_updated_at();
 
+create or replace function public.ctl_block_enviado_without_tracking()
+returns trigger
+language plpgsql
+as $$
+begin
+  if upper(btrim(coalesce(new.commercial_status, ''))) = 'ENVIADO'
+     and coalesce(btrim(new.tracking_code), '') = ''
+     and coalesce(new.delivered, false) = false
+  then
+    if tg_op = 'UPDATE' then
+      new.commercial_status := old.commercial_status;
+    else
+      new.commercial_status := null;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists ctl_orders_block_enviado on public.ctl_orders;
+create trigger ctl_orders_block_enviado
+before insert or update on public.ctl_orders
+for each row execute function public.ctl_block_enviado_without_tracking();
+
 create table if not exists public.ctl_monthly_goals (
   month date primary key,
   target_amount numeric(14,2) not null,

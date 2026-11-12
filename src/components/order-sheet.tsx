@@ -45,7 +45,7 @@ function listTone(status: string | null, delivered = false) {
   if (value === "CANCELADO") return "danger";
   if (delivered || value === "ENTREGUE" || value === "FINALIZADO") return "ok";
   if (value === "ENVIADO" || value.includes("ENVIAR")) return "info";
-  if (value.includes("AGUARD")) return "warn";
+  if (value.includes("AGUARD") || value.includes("MONITOR")) return "warn";
   return "";
 }
 
