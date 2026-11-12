@@ -18,7 +18,7 @@ function pageSizeOf(value: string | undefined) {
 
 const ABAS: { id: SheetMode; label: string; hint: string }[] = [
   { id: "pedidos", label: "Pedidos", hint: "Compras em aberto: origem, comprado, CPF, taxa e entregue." },
-  { id: "acompanhamento", label: "Acompanhamento", hint: "Pedidos em aberto, com o status salvo na ficha." },
+  { id: "acompanhamento", label: "Acompanhamento", hint: "Pedidos em aberto. Status em branco continua na lista, com aviso." },
   { id: "rastreio", label: "Rastreio", hint: "Códigos que ainda não foram marcados como entregues." },
   { id: "entregues", label: "Entregues", hint: "Arquivo. Desmarcar Entregue devolve o pedido para a lista aberta." },
 ];
@@ -87,7 +87,7 @@ export default async function PedidosPage({
       select ${sql.unsafe(COLUMNS)}
       from ctl_orders
       ${sheetWhere(sql, filters)}
-      ${sheetOrder(sql, archive)}
+      ${sheetOrder(sql, archive, aba)}
       limit ${pageSize}
       offset ${(page - 1) * pageSize}
     `,
@@ -98,9 +98,21 @@ export default async function PedidosPage({
     `,
   ]);
   const count = counted[0]?.total_count ?? 0;
-  const payments = await taxPayments(sql, found.map((order) => order.id));
+  const [payments, missingCounted] = await Promise.all([
+    taxPayments(sql, found.map((order) => order.id)),
+    aba === "acompanhamento" && !textSearch
+      ? sql<{ missing_count: number }[]>`
+          select count(*)::int as missing_count
+          from ctl_orders
+          where delivered = false
+            and data_source in ('tray', 'bi')
+            and (commercial_status is null or btrim(commercial_status) = '')
+        `
+      : Promise.resolve([]),
+  ]);
   const rows = found.map((order) => toSheetOrder(order, payments.get(order.id) ?? null));
   const pages = Math.max(Math.ceil((count ?? 0) / pageSize), 1);
+  const missingStatus = missingCounted[0]?.missing_count ?? 0;
   const hint = ABAS.find((item) => item.id === aba)?.hint;
   const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila, tamanho: pageSize };
   const filtering = Boolean(numero || nome || idref || comId || legacy || params.fila);
@@ -117,6 +129,11 @@ export default async function PedidosPage({
           {" "}
           A lista abre em leitura. Editar grava só o campo alterado.
         </p>
+        {missingStatus > 0 ? (
+          <p className="text-sm text-warn">
+            {missingStatus} {missingStatus === 1 ? "pedido está" : "pedidos estão"} sem status e continuam nesta lista até alguém escolher.
+          </p>
+        ) : null}
       </div>
       {params.erro === "duplicado" ? (
         <p className="text-sm text-danger">Esse número já existe. A busca abaixo mostra a ficha.</p>
@@ -350,7 +367,14 @@ function abaClause(sql: SqlTag, filters: SheetFilters) {
     return sql`and delivered = false and (origin is not null or tray_modified_at is not null)`;
   }
   if (filters.aba === "acompanhamento") {
-    return sql`and commercial_status in ${sql(OPEN_COMMERCIAL_STATUSES)}`;
+    return sql`and (
+      commercial_status in ${sql(OPEN_COMMERCIAL_STATUSES)}
+      or (
+        delivered = false
+        and data_source in ('tray', 'bi')
+        and (commercial_status is null or btrim(commercial_status) = '')
+      )
+    )`;
   }
   if (filters.aba === "rastreio") return sql`and delivered = false and tracking_code is not null`;
   return sql`and delivered = true`;
@@ -364,10 +388,14 @@ function filaClause(sql: SqlTag, filters: SheetFilters) {
   return sql``;
 }
 
-function sheetOrder(sql: SqlTag, archive: boolean) {
+function sheetOrder(sql: SqlTag, archive: boolean, aba: SheetMode) {
+  const missingFirst = aba === "acompanhamento"
+    ? sql`case when commercial_status is null or btrim(coalesce(commercial_status, '')) = '' then 0 else 1 end,`
+    : sql``;
   if (archive) return sql`order by updated_at desc nulls last, coalesce(label, order_key)`;
   return sql`
     order by
+      ${missingFirst}
       case when order_key ~ '^[0-9]+$' then 0 else 1 end,
       case when order_key ~ '^[0-9]+$' then order_key::numeric end desc nulls last,
       coalesce(label, order_key)

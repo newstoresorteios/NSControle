@@ -68,7 +68,7 @@ export function OrderSheet({
         <span className="tag tag-info">A enviar / enviado</span>
         <span className="tag tag-ok">Entregue</span>
         <span className="tag tag-danger">Cancelado</span>
-        <span className="tag tag-warn">Prazo do fornecedor estourado</span>
+        <span className="tag tag-warn">Sem status / prazo estourado</span>
       </div>
       <table>
         <thead>
@@ -165,14 +165,14 @@ function AcompanhamentoHead() {
       <th>Compra</th>
       <th>Pagamento</th>
       <th>Status</th>
+      <th>Dias</th>
+      <th>Dias fornecedor</th>
       <th>Rastreio</th>
       <th>Fornecedor</th>
       <th>Nome do fornecedor</th>
       <th>Compra ao fornecedor</th>
       <th>Produto</th>
       <th>Obs internas</th>
-      <th>Dias</th>
-      <th>Dias fornecedor</th>
       <th></th>
     </>
   );
@@ -204,7 +204,7 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
               save.run({ commercial_status: next });
             }}
           >
-            <option value="">—</option>
+            <option value="" disabled>Sem status</option>
             {withCurrent(COMMERCIAL_STATUSES, status).map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -215,12 +215,6 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
           <StatusTag value={status} delivered={row.delivered} />
         )}
       </td>
-      <td>{editing ? <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} /> : clip(row.tracking_code)}</td>
-      <td>{editing ? <ChoiceCell name="origin" value={canonicalOption(ORIGINS, row.origin)} options={ORIGINS} onSave={save.run} /> : clip(canonicalOption(ORIGINS, row.origin))}</td>
-      <td>{editing ? <TextCell name="supplier_name" value={row.supplier_name} onSave={save.run} /> : clip(row.supplier_name)}</td>
-      <td>{editing ? <DateCell name="supplier_purchase_date" value={row.supplier_purchase_date} onSave={save.run} /> : shortDate(row.supplier_purchase_date)}</td>
-      <td className="wide">{editing ? <TextCell name="product_name" value={row.product_name} onSave={save.run} /> : clip(row.product_name)}</td>
-      <td className="wide">{editing ? <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} /> : clip(row.notes_internal)}</td>
       <td className={`num ${late ? "text-danger font-medium" : ""}`}>{row.days_open ?? "—"}</td>
       <td className="w-24">
         {editing ? (
@@ -239,6 +233,12 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
           row.supplier_days ?? "—"
         )}
       </td>
+      <td>{editing ? <TextCell name="tracking_code" value={row.tracking_code} onSave={save.run} /> : clip(row.tracking_code)}</td>
+      <td>{editing ? <ChoiceCell name="origin" value={canonicalOption(ORIGINS, row.origin)} options={ORIGINS} onSave={save.run} /> : clip(canonicalOption(ORIGINS, row.origin))}</td>
+      <td>{editing ? <TextCell name="supplier_name" value={row.supplier_name} onSave={save.run} /> : clip(row.supplier_name)}</td>
+      <td>{editing ? <DateCell name="supplier_purchase_date" value={row.supplier_purchase_date} onSave={save.run} /> : shortDate(row.supplier_purchase_date)}</td>
+      <td className="wide">{editing ? <TextCell name="product_name" value={row.product_name} onSave={save.run} /> : clip(row.product_name)}</td>
+      <td className="wide">{editing ? <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} /> : clip(row.notes_internal)}</td>
       <td><EditButton editing={editing} onClick={() => setEditing((value) => !value)} /></td>
     </>
   );
@@ -317,8 +317,9 @@ function OrderCell({ row, status, pin = false }: { row: SheetOrder; status: Save
 }
 
 function StatusTag({ value, delivered = false }: { value: string | null; delivered?: boolean }) {
-  const tone = listTone(value, delivered) || "muted";
-  const label = value || (delivered ? "Entregue" : "—");
+  const blank = !(value || "").trim();
+  const tone = blank && !delivered ? "warn" : listTone(value, delivered) || "muted";
+  const label = blank ? (delivered ? "Entregue" : "Sem status") : value;
   return <span className={`tag tag-${tone}`}>{label}</span>;
 }
 
