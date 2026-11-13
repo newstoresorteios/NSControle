@@ -12,6 +12,7 @@ const GROUPS = [
       { href: "/estoque", label: "Estoque" },
       { href: "/compras", label: "Compras" },
       { href: "/enderecos", label: "Endereços" },
+      { href: "/logins", label: "Logins" },
     ],
   },
   {
