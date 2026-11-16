@@ -28,7 +28,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           <form action={signIn} className="mt-8 grid gap-4">
             <label className="grid gap-1.5">
               E-mail
-              <input name="email" type="email" autoComplete="username" required />
+              <input name="email" type="text" autoComplete="username" required />
             </label>
             <label className="grid gap-1.5">
               Senha
