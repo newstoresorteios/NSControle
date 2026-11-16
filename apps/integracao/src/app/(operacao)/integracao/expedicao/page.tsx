@@ -10,8 +10,7 @@ export default async function ExpedicaoPage({ searchParams }: { searchParams: Pr
   return (
     <div className="grid gap-6">
       <header>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted">New Store × Redirect Europa</p>
-        <h1 className="page-title mt-2">Expedição</h1>
+        <h1 className="page-title">Expedição</h1>
         <p className="text-muted">O pedido entra sozinho como pendente de preparação. Separe, confira o número de série e embale.</p>
       </header>
       <Notice ok={params.ok} erro={params.erro} />

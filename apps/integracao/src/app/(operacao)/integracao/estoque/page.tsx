@@ -31,8 +31,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
   return (
     <div className="grid gap-6">
       <header>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted">New Store × Redirect Europa</p>
-        <h1 className="page-title mt-2">Estoque</h1>
+        <h1 className="page-title">Estoque</h1>
         <p className="text-muted">Disponibilidade, localização, reserva e histórico de cada unidade, com foto e ID.</p>
       </header>
       <Notice ok={params.ok} erro={params.erro} />

@@ -20,14 +20,22 @@ function current(path: string, href: string) {
   return path === href || path.startsWith(`${href}/`);
 }
 
-export function OperationNav() {
+export function OperationNav({ scroll = false }: { scroll?: boolean }) {
   const path = usePathname();
   return (
-    <nav className="mx-auto flex max-w-[1400px] flex-wrap gap-6 px-5 pb-4 text-sm">
+    <nav className={scroll ? "nav-scroll flex flex-nowrap items-end gap-x-4 overflow-x-auto py-2.5" : "flex flex-wrap items-end gap-x-4 gap-y-2"}>
+      <span className="pb-1 text-[10px] uppercase tracking-[0.16em] text-muted">Operação</span>
       {tabs.map(([href, label]) => {
         const active = current(path, href);
         return (
-          <Link key={href} href={href} aria-current={active ? "page" : undefined} className={active ? "nav-current" : undefined}>
+          <Link
+            key={href}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={`shrink-0 border-b-2 px-0.5 py-1 text-[12px] uppercase tracking-[0.14em] ${
+              active ? "border-brand font-medium text-brand" : "border-transparent font-light text-ink hover:border-brand/40 hover:text-brand"
+            }`}
+          >
             {label}
           </Link>
         );

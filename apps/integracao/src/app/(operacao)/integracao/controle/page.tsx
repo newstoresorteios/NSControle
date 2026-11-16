@@ -17,8 +17,7 @@ export default async function ControlePage() {
   return (
     <div className="grid gap-6">
       <header>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted">New Store × Redirect Europa</p>
-        <h1 className="page-title mt-2">Controle</h1>
+        <h1 className="page-title">Controle</h1>
         <p className="text-muted">Histórico de movimentações e visão das unidades. Você está como {profile}.</p>
       </header>
       <div className="grid gap-3 sm:grid-cols-4">
@@ -28,7 +27,7 @@ export default async function ControlePage() {
           [counts.reserved, 'Reservadas'],
           [preparing.total, 'Em preparação ou embaladas'],
         ].map(([value, label]) => (
-          <div className="card" key={label}><p className="text-3xl">{value}</p><p className="text-sm text-muted">{label}</p></div>
+          <div className="card stat" key={label}><p className="num text-3xl">{value}</p><p className="mt-2 text-sm text-muted">{label}</p></div>
         ))}
       </div>
       <section className="card">
