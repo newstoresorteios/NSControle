@@ -10,8 +10,7 @@ export default async function TransportePage({ searchParams }: { searchParams: P
   return (
     <div className="grid gap-6">
       <header>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted">New Store × Redirect Europa</p>
-        <h1 className="page-title mt-2">Transporte</h1>
+        <h1 className="page-title">Transporte</h1>
         <p className="text-muted">Depois de embalado, informe destinatário, peso e dimensões e registre o rastreio. O código volta para o pedido no NSControle. A etiqueta da Sendcloud e o aviso ao cliente na Tray ainda não são emitidos por aqui.</p>
       </header>
       <Notice ok={params.ok} erro={params.erro} />

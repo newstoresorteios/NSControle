@@ -18,7 +18,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
   return (
     <div className="grid gap-6">
       <header>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted">Unidade #{unit.id}</p>
+        <p className="kicker">Unidade #{unit.id}</p>
         <h1 className="page-title mt-2">{unit.brand} {unit.model}</h1>
         <p className="text-muted">Série {unit.serial_number} · {positions.length} {positions.length === 1 ? 'foto' : 'fotos'}</p>
       </header>

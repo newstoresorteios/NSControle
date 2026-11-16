@@ -54,8 +54,7 @@ export default async function ComprasPage({
   return (
     <div className="grid gap-6">
       <header>
-        <p className="text-xs uppercase tracking-[0.2em] text-muted">New Store × Redirect Europa</p>
-        <h1 className="page-title mt-2">Compras</h1>
+        <h1 className="page-title">Compras</h1>
         <p className="text-muted">
           Pedidos que a New Store pediu para a Ana comprar, de qualquer origem. O status, o fornecedor, o valor e o pagamento
           ficam na ficha do pedido. As faturas entram em Pagamentos.
