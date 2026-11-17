@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { deleteNote, saveNote } from "./actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { asNumber, brl, monthLabel } from "@/lib/format";
+import { asNumber, brl } from "@/lib/format";
 
 type NoteRow = {
   id: string;
@@ -34,10 +35,19 @@ function settledCell(settled: boolean | null) {
   return settled ? "Sim" : "Não";
 }
 
+function monthRef(month: string) {
+  return `Mês ${Number(month.slice(5, 7))}`;
+}
+
+function moneyValue(value: string | null) {
+  const amount = asNumber(value);
+  return amount == null ? "" : amount.toFixed(2).replace(".", ",");
+}
+
 export default async function IntermediacaoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; historico?: string }>;
+  searchParams: Promise<{ month?: string; historico?: string; nota?: string; ok?: string; erro?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
@@ -72,6 +82,7 @@ export default async function IntermediacaoPage({
   const archived = notes.filter((note) => note.purchase_done && asNumber(note.purchase_amount) == null && asNumber(note.payment_fee) == null && asNumber(note.shipping_cost) == null);
   const historico = params.historico === "1";
   const shown = historico ? notes : notes.filter((note) => !archived.includes(note));
+  const editing = params.nota ? notes.find((note) => note.id === params.nota) ?? null : null;
   const purchaseTotal = withMoney.reduce((sum, note) => sum + (asNumber(note.purchase_amount) ?? 0), 0);
   const feeTotal = withMoney.reduce((sum, note) => sum + (asNumber(note.payment_fee) ?? 0), 0);
   const freightTotal = withMoney.reduce((sum, note) => sum + (asNumber(note.shipping_cost) ?? 0), 0);
@@ -82,7 +93,7 @@ export default async function IntermediacaoPage({
     <div className="grid gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="page-title">Notas de intermediação de {monthLabel(selected)}</h1>
+          <h1 className="page-title">Notas de intermediação · {monthRef(selected)}</h1>
           <p className="max-w-3xl text-sm text-muted">
             A venda vem da ficha do pedido. O ganho é a venda menos a compra, a alfândega e o frete. {shown.length} {shown.length === 1 ? "linha" : "linhas"} neste mês{withMoney.length ? `, ${withMoney.length} com valor` : ""}.
           </p>
@@ -90,11 +101,43 @@ export default async function IntermediacaoPage({
         <nav className="flex flex-wrap gap-2">
           {months.map((month) => (
             <Link key={month} className={month === selected ? "button" : "button secondary"} href={`/intermediacao?month=${month}`}>
-              {monthLabel(month)}
+              {monthRef(month)}
             </Link>
           ))}
         </nav>
       </div>
+      {params.erro ? <p role="alert" className="text-danger">{params.erro}</p> : null}
+      {params.ok ? <p role="status" className="text-ok">Nota atualizada.</p> : null}
+      <form action={saveNote} className="card grid gap-3 md:grid-cols-4">
+        <h2 className="section-title md:col-span-4">{editing ? `Alterar nota ${editing.label || editing.order_key}` : `Nova nota · ${monthRef(selected)}`}</h2>
+        <input type="hidden" name="month" value={`${selected}-01`} />
+        {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
+        <label>Pedido<input name="order_key" required defaultValue={editing?.label || editing?.order_key || ""} /></label>
+        <label>Plataforma<input name="platform" defaultValue={editing?.platform || ""} /></label>
+        <label>Rastreio<input name="tracking_code" defaultValue={editing?.tracking_code || ""} /></label>
+        <label className="flex items-end gap-2 normal-case tracking-normal">
+          <input name="purchased" type="checkbox" defaultChecked={editing?.purchased ?? false} />
+          Comprado
+        </label>
+        <label>Valor comprado<input name="purchase_amount" inputMode="decimal" defaultValue={moneyValue(editing?.purchase_amount ?? null)} /></label>
+        <label>Taxa / alfândega<input name="payment_fee" inputMode="decimal" defaultValue={moneyValue(editing?.payment_fee ?? null)} /></label>
+        <label>Frete<input name="shipping_cost" inputMode="decimal" defaultValue={moneyValue(editing?.shipping_cost ?? null)} /></label>
+        <div className="flex items-end gap-2">
+          <button type="submit">{editing ? "Salvar alteração" : "Cadastrar nota"}</button>
+          {editing ? <Link className="button secondary" href={`/intermediacao?month=${selected}`}>Cancelar</Link> : null}
+        </div>
+      </form>
+      {editing ? (
+        <form action={deleteNote} className="card flex flex-wrap items-center gap-3">
+          <input type="hidden" name="month" value={`${selected}-01`} />
+          <input type="hidden" name="id" value={editing.id} />
+          <label className="flex items-center gap-2 normal-case tracking-normal">
+            <input name="confirmed" type="checkbox" required />
+            Confirmo a exclusão desta nota
+          </label>
+          <button className="danger" type="submit">Excluir nota</button>
+        </form>
+      ) : null}
       {archived.length ? (
         <p className="text-sm text-muted">
           {historico
@@ -146,6 +189,7 @@ export default async function IntermediacaoPage({
               <th>Ganho</th>
               <th>Realizada</th>
               <th>Ficha</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -167,6 +211,9 @@ export default async function IntermediacaoPage({
                   ) : (
                     "Sem pedido"
                   )}
+                </td>
+                <td>
+                  <Link className="underline" href={`/intermediacao?month=${selected}&nota=${note.id}${historico ? "&historico=1" : ""}`}>Alterar</Link>
                 </td>
               </tr>
             ))}
