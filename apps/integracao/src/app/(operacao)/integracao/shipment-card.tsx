@@ -1,11 +1,12 @@
 import { eligibleOrder, suggestedParcelGrams } from '@/lib/integracao';
 import { advanceShipment, issueLabel } from './actions';
+import type { ShipmentView } from './shipments';
 import { Field, recipientFields } from './ui';
 
-export function ShipmentCard({ shipment, partner, mode }: { shipment: Record<string, any>; partner: boolean; mode: 'expedicao' | 'transporte' }) {
+export function ShipmentCard({ shipment, partner, mode }: { shipment: ShipmentView; partner: boolean; mode: 'expedicao' | 'transporte' }) {
   const ownTracking = Boolean(shipment.tracking_code) && shipment.order_tracking === shipment.tracking_code;
   const blocked = shipment.status !== 'enviado' && !ownTracking && !eligibleOrder({
-    delivered: shipment.delivered,
+    delivered: Boolean(shipment.delivered),
     commercial_status: shipment.commercial_status,
     tracking_code: shipment.order_tracking,
   });
