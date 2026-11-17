@@ -192,7 +192,6 @@ export function marginOnComplete(orders: MoneyOrder[]) {
 }
 
 const EXTRA_FLOW: Record<string, string> = {
-  encomenda: "Sob encomenda",
   ns_creditos: "NS Créditos",
 };
 
@@ -208,10 +207,10 @@ export function financeSlices(
     buckets.set(key, bucket);
   };
   for (const order of orders) {
-    if (order.flow === "loja_nova") {
+    if (order.flow === "loja_nova" || order.flow === "encomenda") {
       const key = String(order.order_key ?? "");
-      const detected = key ? trayStoreOf({ order_key: key, label: order.label }) : null;
-      const prefixed = /^(\d{6,}):/.exec(key);
+      const detected = order.flow === "loja_nova" && key ? trayStoreOf({ order_key: key, label: order.label }) : null;
+      const prefixed = order.flow === "loja_nova" ? /^(\d{6,}):/.exec(key) : null;
       const store = detected ?? prefixed?.[1] ?? PRIMARY_STORE;
       put(store, storeLabel(store), order);
       continue;

@@ -228,83 +228,51 @@ export default async function FinanceiroPage({
 
       {slices.length ? (
         <section className="card overflow-x-auto">
-          <h2 className="section-title">Compra, frete e alfândega</h2>
+          <h2 className="section-title">Por loja</h2>
           <p className="mt-1 text-sm text-muted">
-            Soma do que já foi lançado neste mês, em cada loja e no total. Entra pedido com ou sem venda.
+            A sob encomenda entra na New Store. Cada coluna soma o mês inteiro, e a linha Soma fecha com os cartões de cima.
           </p>
           <table className="mt-3">
             <thead>
               <tr>
                 <th>Loja</th>
+                <th>Venda</th>
                 <th>Custo de compra</th>
                 <th>Frete</th>
                 <th>Taxa de alfândega</th>
+                <th>Taxa da máquina</th>
+                <th>Custo</th>
+                <th>Lucro</th>
               </tr>
             </thead>
             <tbody>
               {slices.map((slice) => (
                 <tr key={slice.key}>
                   <td>{slice.label}</td>
+                  <td className="num">{brl(slice.summary.vendas)}</td>
                   <td className="num text-danger">{brl(slice.summary.custoCompra)}</td>
                   <td className="num text-danger">{brl(slice.summary.frete)}</td>
                   <td className="num text-danger">{brl(slice.summary.alfandega)}</td>
-                </tr>
-              ))}
-              <tr>
-                <td>Total</td>
-                <td className="num text-danger">{brl(summary.custoCompra)}</td>
-                <td className="num text-danger">{brl(summary.frete)}</td>
-                <td className="num text-danger">{brl(summary.alfandega)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      ) : null}
-
-      {slices.length ? (
-        <section className="card overflow-x-auto">
-          <h2 className="section-title">Por loja</h2>
-          <p className="mt-1 text-sm text-muted">
-            Cada linha usa só os pedidos que já têm venda e compra. O lucro parcial do topo continua contando o custo que ainda está sem venda.
-          </p>
-          <table className="mt-3">
-            <thead>
-              <tr>
-                <th>Loja</th>
-                <th>Pedidos completos</th>
-                <th>Venda</th>
-                <th>Custo</th>
-                <th>Lucro</th>
-                <th>Margem</th>
-              </tr>
-            </thead>
-            <tbody>
-              {slices.map((slice) => (
-                <tr key={slice.key}>
-                  <td>{slice.label}</td>
-                  <td className="num">{slice.complete.count}</td>
-                  <td className="num">{brl(slice.complete.vendas)}</td>
-                  <td className="num text-danger">{brl(slice.complete.custo)}</td>
-                  <td className={`num ${slice.complete.resultado < 0 ? "text-danger" : "text-ok"}`}>
-                    {brl(slice.complete.resultado)}
+                  <td className="num text-danger">{brl(slice.summary.taxaMaquina)}</td>
+                  <td className="num text-danger">{brl(slice.summary.custoTotal)}</td>
+                  <td className={`num ${slice.summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
+                    {brl(slice.summary.resultado)}
                   </td>
-                  <td className="num">{percent(slice.complete.margem)}</td>
                 </tr>
               ))}
               <tr>
                 <td>Soma</td>
-                <td className="num">{slices.reduce((total, slice) => total + slice.complete.count, 0)}</td>
-                <td className="num">{brl(complete.vendas)}</td>
-                <td className="num text-danger">{brl(complete.custo)}</td>
-                <td className={`num ${complete.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(complete.resultado)}</td>
-                <td className="num">{percent(complete.margem)}</td>
+                <td className="num">{brl(summary.vendas)}</td>
+                <td className="num text-danger">{brl(summary.custoCompra)}</td>
+                <td className="num text-danger">{brl(summary.frete)}</td>
+                <td className="num text-danger">{brl(summary.alfandega)}</td>
+                <td className="num text-danger">{brl(summary.taxaMaquina)}</td>
+                <td className="num text-danger">{brl(summary.custoTotal)}</td>
+                <td className={`num ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(summary.resultado)}</td>
               </tr>
             </tbody>
           </table>
         </section>
-      ) : null}
-      {slices.some((slice) => slice.summary.vendas === 0 && slice.summary.custoTotal > 0) ? (
-        <p className="text-sm text-muted">Há custo de sob encomenda sem venda neste mês. Ele fica no lucro parcial do topo e não entra na tabela, porque a tabela só soma pedido com venda e compra.</p>
       ) : null}
       </> : null}
 
