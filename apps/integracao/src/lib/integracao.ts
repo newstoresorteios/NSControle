@@ -109,6 +109,25 @@ export function transitionAllowed(from: string, to: string) {
   return ({ pendente: ['preparando','cancelado'], preparando: ['embalado','cancelado'], embalado: ['enviado','cancelado'] } as Record<string,string[]>)[from]?.includes(to) ?? false;
 }
 
+export function suggestedParcelGrams(itemWeight: number) {
+  if (!Number.isInteger(itemWeight) || itemWeight <= 0) return null;
+  return itemWeight + (itemWeight >= 600 && itemWeight <= 800 ? 200 : 0);
+}
+
+export const CUSTOMS_TEMPLATES = [
+  { id: "pulso", label: "Relógio de pulso", description: "Wrist watch", hs: "910221", origin: "CH", currency: "EUR" },
+  { id: "quartzo", label: "Relógio de quartzo", description: "Quartz wrist watch", hs: "910211", origin: "JP", currency: "EUR" },
+  { id: "pulseira", label: "Pulseira de relógio", description: "Watch strap", hs: "911320", origin: "IT", currency: "EUR" },
+] as const;
+
+export function customsFromTemplate(templateId: string, complement: string | null) {
+  const template = CUSTOMS_TEMPLATES.find((item) => item.id === templateId);
+  if (!template) return null;
+  const note = complement?.trim().replace(/\s+/g, " ") ?? "";
+  const description = (note ? `${template.description} — ${note}` : template.description).slice(0, 240);
+  return { description, hs: template.hs, origin: template.origin, currency: template.currency };
+}
+
 // Keep in sync with src/lib/integracao.ts. The Europa app deploys alone.
 export const ANA_CURRENCIES = ["EUR", "USD", "GBP", "CHF", "BRL"] as const;
 export const ANA_PURCHASE_FIELDS = [

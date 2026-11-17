@@ -29,7 +29,7 @@ já pode ser usada. Configure `INTEGRACAO_URL` no projeto NSControle com essa UR
 
 Os dados operacionais ficam em `ctl_integration_stock`, `ctl_integration_units`,
 `ctl_integration_unit_photos`, `ctl_integration_shipments` e `ctl_integration_events`.
-As abas são páginas separadas: Compras, Recebimento, Estoque, Expedição, Transporte e Controle.
+As abas são páginas separadas: Compras, Recebimento, Estoque, Pedidos, Expedição, Transporte e Controle.
 O recebimento guarda até 8 fotos da conferência e o estoque abre a galeria da unidade. O estoque interno do
 NSControle permanece separado. Nesta fase as aplicações usam o mesmo PostgreSQL
 para a ponte transacional: NSControle encaminha o pedido e a reserva; Europa vê

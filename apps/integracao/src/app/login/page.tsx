@@ -20,7 +20,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           <p className="kicker mt-8">Acesso da operação</p>
           <h1 className="page-title mt-2">Entrar</h1>
           <p className="mt-3 text-sm text-muted">
-            Compras, recebimento, estoque e expedição.
+            Compras, recebimento, estoque, pedidos e transporte.
           </p>
           {message ? (
             <p role="alert" className="mt-4 border border-danger/20 bg-danger/5 px-3 py-2 text-sm text-danger">{message}</p>

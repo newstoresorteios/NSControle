@@ -11,7 +11,7 @@ export default async function TransportePage({ searchParams }: { searchParams: P
     <div className="grid gap-6">
       <header>
         <h1 className="page-title">Transporte</h1>
-        <p className="text-muted">Depois de embalado, informe destinatário, peso e dimensões e registre o rastreio. O código volta para o pedido no NSControle. A etiqueta da Sendcloud e o aviso ao cliente na Tray ainda não são emitidos por aqui.</p>
+        <p className="text-muted">Depois de embalado, informe peso e dimensões e gere a etiqueta. O rastreio volta para o pedido e, quando a loja está ligada, também para a Tray. Se a emissão falhar, o erro fica neste volume e o rastreio pode ser registrado manualmente.</p>
       </header>
       <Notice ok={params.ok} erro={params.erro} />
       {!shipments.length ? <div className="card text-muted">Nenhum volume embalado ou enviado.</div> : null}

@@ -35,6 +35,8 @@ create table if not exists ctl_integration_shipments (
   width_cm numeric check (width_cm > 0),
   height_cm numeric check (height_cm > 0),
   tracking_code text,
+  label_error text,
+  label_pdf bytea,
   created_by text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -57,4 +59,6 @@ alter table ctl_integration_order_data enable row level security;
 alter table ctl_integration_units enable row level security;
 alter table ctl_integration_shipments enable row level security;
 alter table ctl_integration_events enable row level security;
+alter table ctl_integration_shipments add column if not exists label_error text;
+alter table ctl_integration_shipments add column if not exists label_pdf bytea;
 commit;

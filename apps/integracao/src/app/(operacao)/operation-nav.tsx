@@ -7,6 +7,7 @@ const tabs = [
   ["/integracao/compras", "Compras"],
   ["/integracao", "Recebimento"],
   ["/integracao/estoque", "Estoque"],
+  ["/integracao/pedidos", "Pedidos"],
   ["/integracao/expedicao", "Expedição"],
   ["/integracao/transporte", "Transporte"],
   ["/integracao/controle", "Controle"],
