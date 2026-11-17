@@ -6,8 +6,10 @@ import { requireOperator } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { decimal, integer, text } from '@/lib/form';
 import { eligibleOrder, transitionAllowed } from '@/lib/integracao';
+import { announceParcel } from '@/lib/sendcloud';
+import { pushTracking } from '@/lib/tray-shipping';
 
-const returnTo = new Set(['/integracao', '/integracao/estoque', '/integracao/expedicao', '/integracao/transporte', '/integracao/controle']);
+const returnTo = new Set(['/integracao', '/integracao/estoque', '/integracao/pedidos', '/integracao/expedicao', '/integracao/transporte', '/integracao/controle']);
 
 function finish(path: string, error?: string): never {
   const target = returnTo.has(path) ? path : '/integracao';
@@ -82,11 +84,13 @@ export async function advanceShipment(data: FormData) {
   try {
     const id = text(data,'shipment_id'), next = text(data,'next') || '';
     if (!uuid(id) || (next === 'cancelado' && actor.role !== 'newstore')) throw new Error('Ação não permitida.');
-    await db().begin(async sql => {
-      const [shipment] = await sql`select s.*, u.inventory_id, u.serial_number from ctl_integration_shipments s join ctl_integration_units u on u.id = s.unit_id where s.id = ${id!} for update of s, u`;
+    const handed = await db().begin(async sql => {
+      let note: { unitId: number; orderKey: string; tracking: string } | null = null;
+      const [shipment] = await sql`select s.id, s.unit_id, s.order_id, s.status, u.inventory_id, u.serial_number from ctl_integration_shipments s join ctl_integration_units u on u.id = s.unit_id where s.id = ${id!} for update of s, u`;
       if (!shipment || !transitionAllowed(shipment.status,next)) throw new Error('O envio mudou de etapa. Atualize a página.');
-      const [order] = await sql`select delivered, commercial_status, tracking_code from ctl_orders where id = ${shipment.order_id} for update`;
-      if (next !== 'cancelado' && !eligibleOrder(order as {delivered:boolean;commercial_status:string|null;tracking_code:string|null})) throw new Error('Pedido bloqueado: confira status comercial, entrega e rastreio no NSControle.');
+      const [order] = await sql`select order_key, delivered, commercial_status, tracking_code from ctl_orders where id = ${shipment.order_id} for update`;
+      const confirmingLabel = next === 'enviado' && Boolean(order?.tracking_code) && order.tracking_code === text(data, 'tracking_code');
+      if (next !== 'cancelado' && !confirmingLabel && !eligibleOrder(order as {delivered:boolean;commercial_status:string|null;tracking_code:string|null})) throw new Error('Pedido bloqueado: confira status comercial, entrega e rastreio no NSControle.');
       if (next === 'embalado') {
         if (text(data,'serial_number') !== shipment.serial_number) throw new Error('A série conferida não é a desta unidade.');
       }
@@ -98,11 +102,69 @@ export async function advanceShipment(data: FormData) {
         await sql`update ctl_integration_shipments set weight_g = ${weight}, length_cm = ${length}, width_cm = ${width}, height_cm = ${height}, tracking_code = ${tracking} where id = ${id!}`;
         await sql`update ctl_orders set tracking_code = ${tracking}, tracking_situation = 'Em trânsito' where id = ${shipment.order_id}`;
         await sql`update ctl_integration_stock set tracking_code = ${tracking}, status = 'Enviado' where id = ${shipment.inventory_id}`;
+        note = { unitId: Number(shipment.unit_id), orderKey: String(order.order_key || ''), tracking };
       }
       if (next === 'cancelado') await sql`update ctl_integration_stock set status = 'Disponível', order_id = null where id = ${shipment.inventory_id}`;
       await sql`update ctl_integration_shipments set status = ${next}, updated_at = now() where id = ${id!}`;
       await sql`insert into ctl_integration_events (unit_id,shipment_id,action,actor) values (${shipment.unit_id},${id!},${next},${actor.email})`;
+      return note;
     });
+    if (handed) {
+      const tray = await pushTracking(handed.orderKey, handed.tracking);
+      await db()`insert into ctl_integration_events (unit_id,shipment_id,action,actor) values (${handed.unitId},${id!},${tray},${actor.email})`;
+    }
   } catch (error) { finish(back, error instanceof Error && !('code' in error) ? error.message : 'Não foi possível atualizar o envio.'); }
   finish(back);
+}
+
+export async function issueLabel(data: FormData) {
+  const actor = await requireOperator();
+  const id = text(data, 'shipment_id');
+  try {
+    if (!uuid(id)) throw new Error('Envio não encontrado.');
+    const weight = integer(data, 'weight_g');
+    const length = decimal(data, 'length_cm');
+    const width = decimal(data, 'width_cm');
+    const height = decimal(data, 'height_cm');
+    if (!weight || weight <= 0 || !length || length <= 0 || !width || width <= 0 || !height || height <= 0) {
+      throw new Error('Informe peso e dimensões positivos.');
+    }
+    const sql = db();
+    const [current] = await sql`select s.id, s.status, s.tracking_code, s.recipient, s.customs_description, s.declared_value, s.currency, s.hs_code, s.origin_country, s.unit_id, o.order_key, o.tracking_code as order_tracking
+      from ctl_integration_shipments s join ctl_orders o on o.id = s.order_id where s.id = ${id!}`;
+    if (!current || current.status !== 'embalado') throw new Error('A etiqueta só é emitida depois da embalagem.');
+    if (current.tracking_code) throw new Error('Este volume já tem rastreio. Imprima a etiqueta ou confirme a entrega.');
+    if (current.order_tracking) throw new Error('O pedido já tem outro rastreio no NSControle.');
+    const issued = await announceParcel({
+      shipmentId: current.id,
+      orderKey: String(current.order_key),
+      recipient: current.recipient,
+      description: current.customs_description,
+      value: Number(current.declared_value),
+      currency: current.currency,
+      hsCode: current.hs_code,
+      originCountry: current.origin_country,
+      weightG: weight,
+      lengthCm: length,
+      widthCm: width,
+      heightCm: height,
+    });
+    if (!issued.ok) {
+      await sql`update ctl_integration_shipments set label_error = ${issued.error}, weight_g = ${weight}, length_cm = ${length}, width_cm = ${width}, height_cm = ${height}, updated_at = now() where id = ${id!}`;
+      await sql`insert into ctl_integration_events (unit_id,shipment_id,action,actor) values (${current.unit_id},${id!},${`Erro de emissão: ${issued.error}`},${actor.email})`;
+      throw new Error(issued.error);
+    }
+    await sql.begin(async tx => {
+      const [locked] = await tx`select id, status, tracking_code from ctl_integration_shipments where id = ${id!} for update`;
+      if (!locked || locked.status !== 'embalado' || locked.tracking_code) throw new Error('Este volume já tem rastreio. Atualize a página.');
+      await tx`update ctl_integration_shipments set tracking_code = ${issued.tracking}, label_pdf = ${issued.pdf}, label_error = null, weight_g = ${weight}, length_cm = ${length}, width_cm = ${width}, height_cm = ${height}, updated_at = now() where id = ${id!}`;
+      await tx`update ctl_orders set tracking_code = ${issued.tracking}, tracking_situation = 'Em trânsito' where id = (select order_id from ctl_integration_shipments where id = ${id!})`;
+      await tx`insert into ctl_integration_events (unit_id,shipment_id,action,actor) values (${current.unit_id},${id!},${`Etiqueta emitida ${issued.tracking}`},${actor.email})`;
+    });
+    const tray = await pushTracking(String(current.order_key), issued.tracking);
+    await sql`insert into ctl_integration_events (unit_id,shipment_id,action,actor) values (${current.unit_id},${id!},${tray},${actor.email})`;
+  } catch (error) {
+    finish('/integracao/transporte', error instanceof Error && !('code' in error) ? error.message : 'Não foi possível emitir a etiqueta.');
+  }
+  finish('/integracao/transporte');
 }
