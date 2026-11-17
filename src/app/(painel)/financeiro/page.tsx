@@ -34,8 +34,10 @@ function gapLabel(gap: Gap) {
   return "envio";
 }
 
-function gapHref(month: string, current: Gap | null, gap: Gap) {
-  return current === gap ? `/financeiro?month=${month}&aba=pendencias` : `/financeiro?month=${month}&aba=pendencias&falta=${gap}`;
+function gapHref(month: string, current: Gap | null, gap: Gap, view: string) {
+  const base = view === "pendencias" ? `/financeiro?month=${month}&aba=pendencias` : `/financeiro?month=${month}`;
+  if (current === gap) return base;
+  return `${base}&falta=${gap}#faltas`;
 }
 
 function plain(value: string | null) {
@@ -49,7 +51,7 @@ function GapCard({ href, label, count, active }: { href: string; label: string; 
     <Link href={href} className={`card stat block ${active ? "border-ink" : ""}`}>
       <p className="kicker">{label}</p>
       <p className={`num mt-2 text-4xl font-medium tracking-tight ${count ? "text-danger" : ""}`}>{count}</p>
-      <p className="mt-1 text-sm text-muted">{count ? "Ver os pedidos" : "Nada em aberto"}</p>
+      <p className="mt-1 text-sm text-muted">{count ? (active ? "Ocultar a lista" : "Ver os pedidos") : "Nada em aberto"}</p>
     </Link>
   );
 }
@@ -279,19 +281,19 @@ export default async function FinanceiroPage({
       {view === "resumo" || view === "pendencias" ? (
       <section className="grid gap-3 sm:grid-cols-3">
         <GapCard
-          href={gapHref(selected, falta, "compra")}
+          href={gapHref(selected, falta, "compra", view)}
           label="Sem preço de compra"
           count={summary.semCompra}
           active={falta === "compra"}
         />
         <GapCard
-          href={gapHref(selected, falta, "alfandega")}
+          href={gapHref(selected, falta, "alfandega", view)}
           label="Sem taxa alfandegária"
           count={summary.semAlfandega}
           active={falta === "alfandega"}
         />
         <GapCard
-          href={gapHref(selected, falta, "envio")}
+          href={gapHref(selected, falta, "envio", view)}
           label="Sem custo de envio"
           count={summary.semEnvio}
           active={falta === "envio"}
@@ -299,8 +301,8 @@ export default async function FinanceiroPage({
       </section>
       ) : null}
 
-      {view === "pendencias" ? (
-      <section className="card overflow-x-auto">
+      {view === "pendencias" || (view === "resumo" && falta) ? (
+      <section id="faltas" className="card overflow-x-auto">
         <h2 className="section-title">
           {falta === "compra"
             ? "Sem preço de compra"
