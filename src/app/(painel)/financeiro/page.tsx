@@ -207,7 +207,12 @@ export default async function FinanceiroPage({
         <article className="card stat stat-cost">
           <p className="kicker">Custo</p>
           <p className="num mt-2 text-3xl font-medium tracking-tight text-danger">{brl(summary.custoTotal)}</p>
-          <p className="mt-1 text-sm text-muted">Compra, envio, alfândega e taxa da máquina.</p>
+          <dl className="mt-2 grid gap-1 text-sm">
+            <div className="flex justify-between gap-3"><dt>Compra</dt><dd className="num">{brl(summary.custoCompra)}</dd></div>
+            <div className="flex justify-between gap-3"><dt>Frete</dt><dd className="num">{brl(summary.frete)}</dd></div>
+            <div className="flex justify-between gap-3"><dt>Alfândega</dt><dd className="num">{brl(summary.alfandega)}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted">Taxa da máquina</dt><dd className="num text-muted">{brl(summary.taxaMaquina)}</dd></div>
+          </dl>
         </article>
         <article className="card stat stat-profit">
           <p className="kicker">Lucro</p>
@@ -220,6 +225,41 @@ export default async function FinanceiroPage({
           </p>
         </article>
       </section>
+
+      {slices.length ? (
+        <section className="card overflow-x-auto">
+          <h2 className="section-title">Compra, frete e alfândega</h2>
+          <p className="mt-1 text-sm text-muted">
+            Soma do que já foi lançado neste mês, em cada loja e no total. Entra pedido com ou sem venda.
+          </p>
+          <table className="mt-3">
+            <thead>
+              <tr>
+                <th>Loja</th>
+                <th>Custo de compra</th>
+                <th>Frete</th>
+                <th>Taxa de alfândega</th>
+              </tr>
+            </thead>
+            <tbody>
+              {slices.map((slice) => (
+                <tr key={slice.key}>
+                  <td>{slice.label}</td>
+                  <td className="num text-danger">{brl(slice.summary.custoCompra)}</td>
+                  <td className="num text-danger">{brl(slice.summary.frete)}</td>
+                  <td className="num text-danger">{brl(slice.summary.alfandega)}</td>
+                </tr>
+              ))}
+              <tr>
+                <td>Total</td>
+                <td className="num text-danger">{brl(summary.custoCompra)}</td>
+                <td className="num text-danger">{brl(summary.frete)}</td>
+                <td className="num text-danger">{brl(summary.alfandega)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      ) : null}
 
       {slices.length ? (
         <section className="card overflow-x-auto">
@@ -355,7 +395,9 @@ export default async function FinanceiroPage({
               <th>Total de vendas loja nova</th>
               <th>Total de vendas sob encomenda</th>
               <th>Dedução: compra</th>
-              <th>Dedução: taxas e envios</th>
+              <th>Dedução: frete</th>
+              <th>Dedução: alfândega</th>
+              <th>Dedução: taxa da máquina</th>
               <th>Deduções totais estimadas</th>
               <th>Resultado estimado</th>
             </tr>
@@ -365,14 +407,16 @@ export default async function FinanceiroPage({
               <td className="num">{brl(summary.vendasLoja)}</td>
               <td className="num">{brl(summary.vendasEncomenda)}</td>
               <td className="num text-danger">{brl(-summary.custoCompra)}</td>
-              <td className="num text-danger">{brl(-summary.taxas)}</td>
+              <td className="num text-danger">{brl(-summary.frete)}</td>
+              <td className="num text-danger">{brl(-summary.alfandega)}</td>
+              <td className="num text-danger">{brl(-summary.taxaMaquina)}</td>
               <td className="num text-danger">{brl(-summary.custoTotal)}</td>
               <td className="num text-ok">{brl(summary.resultado)}</td>
             </tr>
           </tbody>
         </table>
         <p className="mt-3 text-sm text-muted">
-          Taxas e envios reúnem taxa da máquina, frete e alfândega.
+          Compra, frete, alfândega e taxa da máquina entram separados na dedução.
           {summary.vendasCreditos ? ` NS Créditos ${brl(summary.vendasCreditos)} entram no resultado e ficam fora da meta.` : ""}
         </p>
         {gaps.length ? (

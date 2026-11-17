@@ -107,6 +107,10 @@ test("cenário sintético deduz cada taxa uma vez e mostra devolução no mês r
     import_tax: 50,
   };
   const summary = monthSummary([order], null, "2026-10", new Date(2026, 9, 16));
+  assert.equal(summary.custoCompra, 600);
+  assert.equal(summary.frete, 20);
+  assert.equal(summary.alfandega, 50);
+  assert.equal(summary.taxaMaquina, 30);
   assert.equal(summary.taxas, 100);
   assert.equal(summary.custoTotal, 700);
   assert.equal(summary.resultado, 300);
@@ -127,6 +131,11 @@ test("separa as duas lojas e mantém a soma no total", () => {
   const slices = financeSlices(orders, "2026-11", new Date(2026, 10, 10));
   assert.deepEqual(slices.map((slice) => slice.label), ["New Store", "NS Relógios", "Sob encomenda"]);
   close(slices[0].summary.vendas, 100);
+  close(slices[0].summary.custoCompra, 40);
+  close(slices[0].summary.frete, 10);
+  close(slices[0].summary.alfandega, 0);
+  close(slices[1].summary.frete, 5);
+  close(slices[2].summary.custoCompra, 8);
   close(slices[0].summary.custoTotal, 50);
   close(slices[0].summary.resultado, 50);
   close(slices[1].summary.vendas, 50);
@@ -136,9 +145,20 @@ test("separa as duas lojas e mantém a soma no total", () => {
   close(slices[0].complete.mediaGanhos, 50);
   close(slices[2].summary.vendas, 20);
   const total = monthSummary(orders, null, "2026-11", new Date(2026, 10, 10));
+  close(total.custoCompra, 48);
+  close(total.frete, 15);
+  close(total.alfandega, 0);
   close(
     slices.reduce((sum, slice) => sum + slice.summary.vendas, 0),
     total.vendas,
+  );
+  close(
+    slices.reduce((sum, slice) => sum + slice.summary.custoCompra, 0),
+    total.custoCompra,
+  );
+  close(
+    slices.reduce((sum, slice) => sum + slice.summary.frete, 0),
+    total.frete,
   );
   close(
     slices.reduce((sum, slice) => sum + slice.summary.resultado, 0),

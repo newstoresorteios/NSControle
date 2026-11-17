@@ -41,6 +41,9 @@ export type MonthSummary = {
   vendasLojas: number;
   vendas: number;
   custoCompra: number;
+  frete: number;
+  alfandega: number;
+  taxaMaquina: number;
   taxas: number;
   custoTotal: number;
   resultado: number;
@@ -111,10 +114,10 @@ export function monthSummary(
   const vendasLojas = vendasEncomenda + vendasLoja;
   const vendas = vendasLojas + vendasCreditos;
   const custoCompra = sum(orders, null, "purchase_amount");
-  const taxas =
-    sum(orders, null, "payment_fee") +
-    sum(orders, null, "shipping_cost") +
-    sum(orders, null, "import_tax");
+  const frete = sum(orders, null, "shipping_cost");
+  const alfandega = sum(orders, null, "import_tax");
+  const taxaMaquina = sum(orders, null, "payment_fee");
+  const taxas = taxaMaquina + frete + alfandega;
   const custoTotal = custoCompra + taxas;
   const resultado = vendas - custoTotal;
   const [year, mon] = month.split("-").map(Number);
@@ -128,6 +131,9 @@ export function monthSummary(
     vendasLojas,
     vendas,
     custoCompra,
+    frete,
+    alfandega,
+    taxaMaquina,
     taxas,
     custoTotal,
     resultado,
