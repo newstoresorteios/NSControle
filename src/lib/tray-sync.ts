@@ -23,7 +23,7 @@ const MAX_LIST_PAGES = 4;
 const INTERVAL_MS = 90 * 1000;
 const LOCK_MS = 90 * 1000;
 const ORDER_COLUMNS =
-  "id, order_key, flow, finance_month, label, origin, product_name, reference, commercial_status, sale_amount, payment_date, purchase_date, tracking_code, delivered, data_source, tray_modified_at, shipping_cost";
+  "id, order_key, flow, finance_month, label, origin, product_name, reference, commercial_status, sale_amount, payment_date, purchase_date, tracking_code, delivered, data_source, tray_modified_at, shipping_cost, payment_fee";
 
 export type SyncReport = {
   ok: boolean;
@@ -272,6 +272,14 @@ async function execute(state: SyncState, progress: Progress, today: string) {
     where shipping_cost is null
       and substring(notes_tray from 'frete ([0-9]+([.][0-9]+)?)') ~ '^[0-9]'
   `;
+  const fees = await db()`
+    update ctl_orders
+    set payment_fee = substring(notes_tray from 'impostos ([0-9]+([.][0-9]+)?)')::numeric
+    where payment_fee is null
+      and substring(notes_tray from 'impostos ([0-9]+([.][0-9]+)?)') ~ '^[0-9]'
+      and substring(notes_tray from 'impostos ([0-9]+([.][0-9]+)?)')::numeric > 0
+  `;
+  progress.upserted += fees.count;
   progress.upserted += filled.count;
 
   const seen = new Set<string>();

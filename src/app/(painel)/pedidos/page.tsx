@@ -4,7 +4,9 @@ import { OrderSheet, type SheetMode, type SheetOrder } from "@/components/order-
 import { PageSizeSelect } from "@/components/page-size-select";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { brl, monthLabel } from "@/lib/format";
 import { ACCENTS, PLAIN, idPresence, likePattern, orderDigits } from "@/lib/order-filters";
+import { needsAna } from "@/lib/order-rules";
 import { taxPaymentText } from "@/lib/taxes";
 import { OPEN_COMMERCIAL_STATUSES, ORIGINS, withCurrent } from "@/lib/lists";
 
@@ -17,7 +19,7 @@ function pageSizeOf(value: string | undefined) {
 }
 
 const ABAS: { id: SheetMode; label: string; hint: string }[] = [
-  { id: "pedidos", label: "Pedidos", hint: "Compras em aberto: origem, comprado, CPF, taxa e entregue." },
+  { id: "pedidos", label: "Pedidos", hint: "Somente pedidos aprovados do mês, com compra ainda em aberto." },
   { id: "acompanhamento", label: "Acompanhamento", hint: "Pedidos em aberto. Status em branco continua na lista, com aviso." },
   { id: "rastreio", label: "Rastreio", hint: "Códigos que ainda não foram marcados como entregues." },
   { id: "entregues", label: "Entregues", hint: "Arquivo. Desmarcar Entregue devolve o pedido para a lista aberta." },
@@ -46,6 +48,7 @@ export default async function PedidosPage({
     aba?: string;
     page?: string;
     tamanho?: string;
+    mes?: string;
     erro?: string;
   }>;
 }) {
@@ -64,6 +67,14 @@ export default async function PedidosPage({
   const legacyLike = likePattern(legacy);
   const digits = orderDigits(numero);
   const textSearch = Boolean(numero || nome || idref || legacy);
+  const monthParam = (params.mes || "").trim();
+  const month = monthParam === "todos" || textSearch || params.fila
+    ? ""
+    : /^\d{4}-\d{2}$/.test(monthParam)
+      ? monthParam
+      : aba === "pedidos"
+        ? saoPauloMonth()
+        : "";
   await requireTeam();
   const archive = aba === "entregues" && !textSearch;
   const sql = db();
@@ -81,8 +92,9 @@ export default async function PedidosPage({
     textSearch,
     aba,
     fila: params.fila ?? "",
+    month,
   };
-  const [found, counted] = await Promise.all([
+  const [found, counted, macroRows, monthRows] = await Promise.all([
     sql<RawOrder[]>`
       select ${sql.unsafe(COLUMNS)}
       from ctl_orders
@@ -95,6 +107,32 @@ export default async function PedidosPage({
       select count(*)::int as total_count
       from ctl_orders
       ${sheetWhere(sql, filters)}
+    `,
+    sql<{
+      venda: string;
+      compra: string;
+      alfandega: string;
+      frete: string;
+      taxa: string;
+      lucro: string;
+    }[]>`
+      select
+        coalesce(sum(sale_amount), 0) as venda,
+        coalesce(sum(purchase_amount), 0) as compra,
+        coalesce(sum(import_tax), 0) as alfandega,
+        coalesce(sum(shipping_cost), 0) as frete,
+        coalesce(sum(payment_fee), 0) as taxa,
+        coalesce(sum(gain_amount), 0) as lucro
+      from ctl_orders
+      ${sheetWhere(sql, filters)}
+    `,
+    sql<{ month: string }[]>`
+      select to_char(finance_month, 'YYYY-MM') as month
+      from ctl_orders
+      where finance_month is not null
+      group by 1
+      order by 1 desc
+      limit 18
     `,
   ]);
   const count = counted[0]?.total_count ?? 0;
@@ -113,10 +151,12 @@ export default async function PedidosPage({
   const rows = found.map((order) => toSheetOrder(order, payments.get(order.id) ?? null));
   const pages = Math.max(Math.ceil((count ?? 0) / pageSize), 1);
   const missingStatus = missingCounted[0]?.missing_count ?? 0;
+  const macro = macroRows[0];
+  const months = monthRows.map((row) => row.month);
   const hint = ABAS.find((item) => item.id === aba)?.hint;
-  const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila, tamanho: pageSize };
-  const filtering = Boolean(numero || nome || idref || comId || legacy || params.fila);
-  const summary = filterSummary({ numero, nome, idref, comId, legacy, fila: params.fila });
+  const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila, tamanho: pageSize, mes: month || (monthParam === "todos" ? "todos" : "") };
+  const filtering = Boolean(numero || nome || idref || comId || legacy || params.fila || monthParam === "todos" || (month && month !== saoPauloMonth()));
+  const summary = filterSummary({ numero, nome, idref, comId, legacy, fila: params.fila, month });
 
   return (
     <div className="grid gap-4">
@@ -124,7 +164,8 @@ export default async function PedidosPage({
         <h1 className="page-title">Pedidos</h1>
         <p className="text-muted">
           {count} {count === 1 ? "pedido" : "pedidos"}
-          {summary ? ` · ${summary}` : hint ? ` · ${hint}` : ""}
+          {summary ? ` · ${summary}` : ""}
+          {hint ? ` · ${hint}` : ""}
           {pages > 1 ? ` · página ${Math.min(page, pages)} de ${pages}` : ""}
           {" "}
           A lista abre em leitura. Editar grava só o campo alterado.
@@ -156,7 +197,7 @@ export default async function PedidosPage({
         ))}
       </nav>
       <form
-        className="card grid items-end gap-3 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_8rem_7rem_auto]"
+        className="card grid items-end gap-3 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_9rem_8rem_7rem_auto]"
         action="/pedidos"
       >
         <label className="grid gap-1 text-sm">
@@ -180,6 +221,15 @@ export default async function PedidosPage({
           </select>
         </label>
         <label className="grid gap-1 text-sm">
+          Mês
+          <select name="mes" defaultValue={month || "todos"}>
+            <option value="todos">Todos</option>
+            {Array.from(new Set([month, ...months].filter(Boolean))).map((item) => (
+              <option key={item} value={item}>{monthLabel(item)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm">
           Por página
           <PageSizeSelect value={pageSize} />
         </label>
@@ -194,6 +244,34 @@ export default async function PedidosPage({
           ) : null}
         </div>
       </form>
+      {aba === "pedidos" && macro ? (
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <article className="card stat stat-sale">
+            <p className="kicker">Venda</p>
+            <p className="num mt-2 text-2xl font-medium tracking-tight">{brl(macro.venda)}</p>
+          </article>
+          <article className="card stat stat-cost">
+            <p className="kicker">Compra</p>
+            <p className="num mt-2 text-2xl font-medium tracking-tight">{brl(macro.compra)}</p>
+          </article>
+          <article className="card stat stat-warn">
+            <p className="kicker">Alfândega</p>
+            <p className="num mt-2 text-2xl font-medium tracking-tight">{brl(macro.alfandega)}</p>
+          </article>
+          <article className="card stat stat-info">
+            <p className="kicker">Frete</p>
+            <p className="num mt-2 text-2xl font-medium tracking-tight">{brl(macro.frete)}</p>
+          </article>
+          <article className="card stat">
+            <p className="kicker">Taxa de pagamento</p>
+            <p className="num mt-2 text-2xl font-medium tracking-tight">{brl(macro.taxa)}</p>
+          </article>
+          <article className="card stat">
+            <p className="kicker">Lucro</p>
+            <p className={`num mt-2 text-2xl font-medium tracking-tight ${Number(macro.lucro) < 0 ? "text-danger" : "text-ok"}`}>{brl(macro.lucro)}</p>
+          </article>
+        </section>
+      ) : null}
       {aba === "pedidos" && !textSearch && !comId ? (
         <details className="card">
           <summary className="section-title">Novo envio</summary>
@@ -254,6 +332,7 @@ function toSheetOrder(order: RawOrder, taxPayment: string | null): SheetOrder {
   return {
     ...order,
     ana_requested: Boolean(order.ana_requested),
+    ana_needed: needsAna(order),
     tax_payment: taxPayment,
     tracking_event_local: saoPauloLocal(order.tracking_event_at),
     days_open: daysSince(order.purchase_date),
@@ -307,6 +386,7 @@ type SheetFilters = {
   textSearch: boolean;
   aba: SheetMode;
   fila: string;
+  month: string;
 };
 
 type SqlTag = ReturnType<typeof db>;
@@ -320,6 +400,8 @@ function sheetWhere(sql: SqlTag, filters: SheetFilters) {
     ${legacyClause(sql, filters)}
     ${idPresenceClause(sql, filters)}
     ${abaClause(sql, filters)}
+    ${approvedClause(sql, filters)}
+    ${monthClause(sql, filters)}
     ${filaClause(sql, filters)}
   `;
 }
@@ -378,6 +460,26 @@ function abaClause(sql: SqlTag, filters: SheetFilters) {
   }
   if (filters.aba === "rastreio") return sql`and delivered = false and tracking_code is not null`;
   return sql`and delivered = true`;
+}
+
+function approvedClause(sql: SqlTag, filters: SheetFilters) {
+  if (filters.aba !== "pedidos" || filters.textSearch) return sql``;
+  return sql`and coalesce(commercial_status, '') !~* 'aguard|cancel'
+    and (data_source is distinct from 'tray' or sale_amount is not null or payment_date is not null)`;
+}
+
+function monthClause(sql: SqlTag, filters: SheetFilters) {
+  if (!filters.month) return sql``;
+  const start = `${filters.month}-01`;
+  const next = nextMonth(filters.month);
+  return sql`and (
+    finance_month = ${start}::date
+    or (
+      finance_month is null
+      and coalesce(payment_date, purchase_date) >= ${start}::date
+      and coalesce(payment_date, purchase_date) < ${next}::date
+    )
+  )`;
 }
 
 function filaClause(sql: SqlTag, filters: SheetFilters) {
@@ -444,9 +546,11 @@ function filterSummary(filters: {
   comId: string;
   legacy: string;
   fila?: string;
+  month?: string;
 }) {
   if (filters.fila) return FILAS[filters.fila] || filters.fila;
   const parts = [
+    filters.month ? monthLabel(filters.month) : "",
     filters.numero ? `número ${filters.numero}` : "",
     filters.nome ? `nome ${filters.nome}` : "",
     filters.idref ? `ID ${filters.idref}` : "",
@@ -466,6 +570,7 @@ function href(params: {
   aba?: string;
   page?: number;
   tamanho?: number;
+  mes?: string;
 }) {
   const search = new URLSearchParams();
   if (params.aba) search.set("aba", params.aba);
@@ -474,8 +579,26 @@ function href(params: {
   if (params.idref) search.set("idref", params.idref);
   if (params.com_id === "com" || params.com_id === "sem") search.set("com_id", params.com_id);
   if (params.fila) search.set("fila", params.fila);
+  if (params.mes) search.set("mes", params.mes);
   if (params.tamanho && params.tamanho !== DEFAULT_PAGE_SIZE) search.set("tamanho", String(params.tamanho));
   if (params.page && params.page > 1) search.set("page", String(params.page));
   const query = search.toString();
   return query ? `/pedidos?${query}` : "/pedidos";
+}
+
+function saoPauloMonth(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  return `${year}-${month}`;
+}
+
+function nextMonth(month: string) {
+  const [year, mon] = month.split("-").map(Number);
+  const date = new Date(Date.UTC(year, mon, 1));
+  return date.toISOString().slice(0, 10);
 }

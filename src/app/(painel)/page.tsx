@@ -88,7 +88,7 @@ function trayNotice(sync?: string, pedidos?: string): { message: string; tone: "
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ sync?: string; pedidos?: string }>;
+  searchParams: Promise<{ sync?: string; pedidos?: string; atraso?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
@@ -96,7 +96,7 @@ export default async function HomePage({
   const month = saoPauloMonth();
   const monthDate = `${month}-01`;
   const sql = db();
-  const [syncRows, countRows, goalRows, moneyRows] = await Promise.all([
+  const [syncRows, countRows, goalRows, moneyRows, lateCountRows, lateRows] = await Promise.all([
     sql<{ last_run_at: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
       select last_run_at, last_report from ctl_tray_sync
       where id = 'orders'
@@ -118,16 +118,49 @@ export default async function HomePage({
     sql<{
       flow: string;
       order_key: string;
+      label: string | null;
+      origin: string | null;
       sale_amount: string | null;
       purchase_amount: string | null;
       payment_fee: string | null;
       shipping_cost: string | null;
       import_tax: string | null;
     }[]>`
-      select flow, order_key, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax
+      select flow, order_key, label, origin, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax
       from ctl_orders
       where finance_month = ${monthDate}
     `,
+    sql<{ total: number }[]>`
+      select count(*)::int as total
+      from ctl_orders
+      where delivered = false
+        and sale_amount is not null
+        and nullif(btrim(coalesce(tracking_code, '')), '') is null
+        and coalesce(commercial_status, '') !~* 'aguard|cancel'
+        and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
+    `,
+    params.atraso === "1"
+      ? sql<{
+          id: string;
+          order_key: string;
+          label: string | null;
+          product_name: string | null;
+          dia: string | null;
+          commercial_status: string | null;
+        }[]>`
+          select id, order_key, label, product_name,
+            coalesce(payment_date, purchase_date)::text as dia,
+            commercial_status
+          from ctl_orders
+          where delivered = false
+            and sale_amount is not null
+            and nullif(btrim(coalesce(tracking_code, '')), '') is null
+            and coalesce(commercial_status, '') !~* 'aguard|cancel'
+            and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
+          order by coalesce(payment_date, purchase_date) asc nulls last
+          limit 200
+        `
+      : Promise.resolve([]),
   ]);
   const tally = countRows[0];
   const counts = QUEUES.map((queue) => tally?.[queue.id] ?? 0);
@@ -135,6 +168,8 @@ export default async function HomePage({
   const trayResult = trayNotice(params.sync, params.pedidos);
   const summary = monthSummary(moneyRows ?? [], asNumber(goalRows[0]?.target_amount), month);
   const slices = financeSlices(moneyRows ?? [], month);
+  const late = lateCountRows[0]?.total ?? 0;
+  const showLate = params.atraso === "1";
 
   return (
     <div className="grid gap-6">
@@ -164,6 +199,53 @@ export default async function HomePage({
         </div>
       </section>
 
+      <section className="grid gap-3 sm:grid-cols-3">
+        <article className="card stat">
+          <p className="kicker">Alfândega</p>
+          <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.alfandega)}</p>
+          <p className="mt-1 text-sm text-muted">Valor lançado no mês. Pronta entrega fica de fora da pendência.</p>
+        </article>
+        <article className="card stat">
+          <p className="kicker">Taxa de pagamento</p>
+          <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.taxaMaquina)}</p>
+          <p className="mt-1 text-sm text-muted">Taxa dos gateways gravada na ficha.</p>
+        </article>
+        <Link href={showLate ? "/" : "/?atraso=1#atraso"} className="card stat block">
+          <p className="kicker">Sem rastreio há 15 dias</p>
+          <p className={`num mt-2 text-3xl font-medium tracking-tight ${late ? "text-danger" : ""}`}>{late}</p>
+          <p className="mt-1 text-sm text-muted">{late ? (showLate ? "Ocultar a lista" : "Ver os pedidos") : "Nada em aberto"}</p>
+        </Link>
+      </section>
+
+      {showLate ? (
+        <section id="atraso" className="card overflow-x-auto">
+          <h2 className="section-title">Pedidos aprovados sem código de rastreio</h2>
+          <p className="mt-1 text-sm text-muted">Pagos há mais de 15 dias e ainda sem rastreio.</p>
+          <table className="mt-3">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Produto</th>
+                <th>Data</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lateRows.length ? lateRows.map((order) => (
+                <tr key={order.id}>
+                  <td><Link className="underline" href={`/pedidos/${order.id}`}>{order.label || order.order_key}</Link></td>
+                  <td>{order.product_name || "—"}</td>
+                  <td>{order.dia ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${order.dia.slice(0, 10)}T00:00:00Z`)) : "—"}</td>
+                  <td>{order.commercial_status || "—"}</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={4}>Nenhum pedido nessa condição.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+
       <section className="card overflow-x-auto">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -186,6 +268,8 @@ export default async function HomePage({
               <th>Venda</th>
               <th>Custo</th>
               <th>Lucro</th>
+              <th>Alfândega</th>
+              <th>Taxa de pagamento</th>
               <th>Sem compra</th>
               <th>Sem alfândega</th>
               <th>Sem envio</th>
@@ -197,6 +281,8 @@ export default async function HomePage({
               <td className="num">{brl(summary.vendas)}</td>
               <td className="num">{brl(summary.custoTotal)}</td>
               <td className={`num ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(summary.resultado)}</td>
+              <td className="num">{brl(summary.alfandega)}</td>
+              <td className="num">{brl(summary.taxaMaquina)}</td>
               <td className={`num ${summary.semCompra ? "text-danger" : ""}`}>
                 <Link className="underline" href={`/financeiro?month=${month}&falta=compra`}>
                   {summary.semCompra}
@@ -221,6 +307,8 @@ export default async function HomePage({
                 <td className={`num ${slice.summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
                   {brl(slice.summary.resultado)}
                 </td>
+                <td className="num">{brl(slice.summary.alfandega)}</td>
+                <td className="num">{brl(slice.summary.taxaMaquina)}</td>
                 <td className={`num ${slice.summary.semCompra ? "text-danger" : ""}`}>{slice.summary.semCompra}</td>
                 <td className={`num ${slice.summary.semAlfandega ? "text-danger" : ""}`}>{slice.summary.semAlfandega}</td>
                 <td className={`num ${slice.summary.semEnvio ? "text-danger" : ""}`}>{slice.summary.semEnvio}</td>

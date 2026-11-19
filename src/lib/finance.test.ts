@@ -97,6 +97,18 @@ test("média ignora linha sem valor", () => {
   assert.equal(monthSummary([], null, "2026-10").retorno, null);
 });
 
+test("pronta entrega e origem Brasil não entram na conta de alfândega", () => {
+  const orders: MoneyOrder[] = [
+    { flow: "loja_nova", origin: "Pronta entrega", sale_amount: 200, purchase_amount: 80, payment_fee: null, shipping_cost: 15, import_tax: null },
+    { flow: "loja_nova", origin: "Brasil", sale_amount: 100, purchase_amount: 40, payment_fee: null, shipping_cost: 10, import_tax: null },
+    { flow: "loja_nova", origin: "Europa", sale_amount: 300, purchase_amount: null, payment_fee: null, shipping_cost: null, import_tax: null },
+  ];
+  const summary = monthSummary(orders, null, "2026-11", new Date(2026, 10, 18));
+  assert.equal(summary.semAlfandega, 1);
+  assert.equal(summary.semCompra, 1);
+  assert.equal(summary.alfandega, 0);
+});
+
 test("cenário sintético deduz cada taxa uma vez e mostra devolução no mês realizado", () => {
   const order: MoneyOrder = {
     flow: "loja_nova",

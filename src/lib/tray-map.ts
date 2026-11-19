@@ -40,6 +40,7 @@ export type StoredOrder = {
   data_source: string | null;
   tray_modified_at: string | null;
   shipping_cost?: number | string | null;
+  payment_fee?: number | string | null;
 };
 
 export type TrayDraft = {
@@ -61,6 +62,7 @@ export type TrayDraft = {
   cancelled: boolean;
   cancel_amount: number | null;
   payment_method: string | null;
+  payment_fee: number | null;
   notes_tray: string;
   tray_modified_at: string | null;
   shipping_cost: number | null;
@@ -223,6 +225,7 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
   const shipmentValue = money(shipping.shipment_value);
   const discount = money(order.discount);
   const taxes = money(order.taxes);
+  const paymentFee = taxes != null && taxes > 0 ? taxes : null;
   const paymentMethod = text(payment.method) || text(order.payment_method);
   const customerName = text(customer.name);
   const phone = text(customer.phone) || text(customer.cellphone);
@@ -265,6 +268,7 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
     cancelled: group === "cancelled",
     cancel_amount: total,
     payment_method: paymentMethod,
+    payment_fee: paymentFee,
     notes_tray: [head, lines.join("; ")].filter(Boolean).join("\n").slice(0, 4000),
     tray_modified_at: trayTimeIso(order.modified),
     shipping_cost: shipmentValue,
@@ -326,6 +330,7 @@ export function mergeTrayOrder(
         tray_modified_at: draft.tray_modified_at,
         notes_tray: draft.notes_tray,
         shipping_cost: draft.shipping_cost,
+        payment_fee: draft.payment_fee,
       },
     };
   }
@@ -348,6 +353,9 @@ export function mergeTrayOrder(
   if (!existing.purchase_date && draft.purchase_date) row.purchase_date = draft.purchase_date;
   if (draft.shipping_cost != null && (existing.shipping_cost == null || existing.shipping_cost === "" || !sheetOwned)) {
     row.shipping_cost = draft.shipping_cost;
+  }
+  if (draft.payment_fee != null && (existing.payment_fee == null || existing.payment_fee === "")) {
+    row.payment_fee = draft.payment_fee;
   }
   if (draft.tracking_code && (!sheetOwned || !existing.tracking_code)) row.tracking_code = draft.tracking_code;
   if (draft.delivered) row.delivered = true;

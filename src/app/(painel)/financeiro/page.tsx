@@ -3,6 +3,7 @@ import { saveGoal } from "@/app/(painel)/financeiro/actions";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { financeSlices, marginOnComplete, monthSummary } from "@/lib/finance";
+import { nationalShipment } from "@/lib/order-rules";
 import { estimateLucroReal } from "@/lib/finance-lucro-real";
 import { refundTotal } from "@/lib/refunds";
 import { TaxQueue } from "./tax-queue";
@@ -19,11 +20,18 @@ function gapOf(value: string | undefined): Gap | null {
   return null;
 }
 
-function missingGaps(order: { sale_amount: unknown; purchase_amount: unknown; import_tax: unknown; shipping_cost: unknown }): Gap[] {
+function missingGaps(order: {
+  sale_amount: unknown;
+  purchase_amount: unknown;
+  import_tax: unknown;
+  shipping_cost: unknown;
+  origin?: string | null;
+  label?: string | null;
+}): Gap[] {
   if (asNumber(order.sale_amount) == null) return [];
   const gaps: Gap[] = [];
   if (asNumber(order.purchase_amount) == null) gaps.push("compra");
-  if (asNumber(order.import_tax) == null) gaps.push("alfandega");
+  if (asNumber(order.import_tax) == null && !nationalShipment(order)) gaps.push("alfandega");
   if (asNumber(order.shipping_cost) == null) gaps.push("envio");
   return gaps;
 }
@@ -118,6 +126,7 @@ export default async function FinanceiroPage({
       reference: string | null;
       product_name: string | null;
       sourcing_status: string | null;
+      origin: string | null;
       purchased: boolean;
       sale_amount: string | null;
       purchase_amount: string | null;
@@ -128,7 +137,7 @@ export default async function FinanceiroPage({
       gain_amount: string | null;
     }[]
   >`
-    select id, label, order_key, flow, reference, product_name, sourcing_status, purchased,
+    select id, label, order_key, flow, origin, reference, product_name, sourcing_status, purchased,
       sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, tax_identified_at, gain_amount
     from ctl_orders
     where finance_month = ${monthDate}
@@ -178,7 +187,8 @@ export default async function FinanceiroPage({
           <h1 className="page-title">Controle financeiro de {monthLabel(selected)}</h1>
           <p className="max-w-3xl text-sm text-muted">
             Vendas e mês vêm das lojas. Frete, produto e rastreio vêm do pedido. Custo de compra, taxa da máquina,
-            alfândega e o status da compra ficam na ficha.
+            alfândega e o status da compra ficam na ficha. Pronta entrega e origem Brasil não exigem alfândega.
+            A taxa de pagamento entra quando a Tray informa o imposto do pedido.
           </p>
         </div>
         <form className="flex flex-wrap items-center gap-2" action="/financeiro">

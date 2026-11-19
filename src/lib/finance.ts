@@ -1,3 +1,5 @@
+import { nationalShipment } from "./order-rules.ts";
+
 function asNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
   const number = typeof value === "number" ? value : Number(value);
@@ -10,6 +12,8 @@ export type MoneyOrder = {
   flow: string;
   order_key?: string | null;
   label?: string | null;
+  origin?: string | null;
+  notes_internal?: string | null;
   sale_amount: unknown;
   purchase_amount: unknown;
   payment_fee: unknown;
@@ -99,7 +103,11 @@ function average(orders: MoneyOrder[], field: keyof MoneyOrder) {
 }
 
 function missing(orders: MoneyOrder[], field: keyof MoneyOrder) {
-  return orders.filter((order) => asNumber(order.sale_amount) != null && asNumber(order[field]) == null).length;
+  return orders.filter((order) => {
+    if (asNumber(order.sale_amount) == null || asNumber(order[field]) != null) return false;
+    if (field === "import_tax" && nationalShipment(order)) return false;
+    return true;
+  }).length;
 }
 
 export function monthSummary(

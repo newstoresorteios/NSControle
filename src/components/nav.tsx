@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/pagamentos", label: "Pagamentos", tone: "text-ok border-ok" },
   { href: "/cancelamentos", label: "Cancelamentos", tone: "text-ok border-ok" },
   { href: "/calculadora", label: "Calculadora", tone: "text-info border-info" },
+  { href: "/apis", label: "APIs", tone: "text-info border-info" },
 ] as const;
 
 export function Nav({ scroll = false }: { scroll?: boolean; admin?: boolean }) {
