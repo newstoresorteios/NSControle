@@ -55,10 +55,47 @@ test("pedido pago da loja vira venda, rastreio e mês financeiro", () => {
   assert.match(draft.notes_tray, /frete 40.00/);
   assert.doesNotMatch(draft.notes_tray, /impostos/);
   const inserted = mergeTrayOrder(null, draft).row;
+  assert.equal(draft.payment_fee, null);
   assert.equal(inserted.shipping_cost, 40);
+  assert.equal(inserted.payment_fee, null);
   assert.equal(inserted.purchase_amount, undefined);
   assert.equal(inserted.import_tax, undefined);
   assert.equal(inserted.sale_amount, 1500.5);
+});
+
+test("imposto da Tray vira taxa de pagamento e não substitui valor já lançado", () => {
+  const draft = buildTrayDraft({
+    ...paid,
+    order: { ...paid.order, taxes: "18.90" },
+  });
+  assert.ok(draft);
+  assert.equal(draft.payment_fee, 18.9);
+  assert.match(draft.notes_tray, /impostos 18.90/);
+  const inserted = mergeTrayOrder(null, draft).row;
+  assert.equal(inserted.payment_fee, 18.9);
+  const kept = mergeTrayOrder(
+    {
+      id: "abc",
+      order_key: "1200",
+      flow: "loja_nova",
+      finance_month: "2026-10-01",
+      label: "Pedido 1200",
+      origin: null,
+      product_name: "Relógio",
+      reference: "Relógio",
+      commercial_status: "A ENVIAR",
+      sale_amount: 1500.5,
+      payment_date: "2026-10-03",
+      purchase_date: "2026-10-03",
+      tracking_code: "AB123456789BR",
+      delivered: false,
+      data_source: "tray",
+      tray_modified_at: null,
+      payment_fee: 9,
+    },
+    draft,
+  );
+  assert.equal(kept.row.payment_fee, undefined);
 });
 
 test("pedido sem pagamento não entra no financeiro", () => {

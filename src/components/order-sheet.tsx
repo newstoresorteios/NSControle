@@ -37,6 +37,7 @@ export type SheetOrder = {
   notes_tray: string | null;
   days_open: number | null;
   ana_requested: boolean;
+  ana_needed: boolean;
   tax_payment: string | null;
 };
 
@@ -60,7 +61,7 @@ export function OrderSheet({
   returnTo?: string;
   emptyLabel?: string;
 }) {
-  const ana = mode === "pedidos";
+  const ana = mode === "pedidos" && rows.some((row) => row.ana_needed || row.ana_requested);
   return (
     <div className="card sheet">
       <div className="flex flex-wrap gap-2 px-3 pt-3 text-xs">
@@ -129,8 +130,10 @@ function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; ret
         <td className="pin pin-ana">
           {row.ana_requested ? (
             <span className="text-xs text-muted">Com a Ana</span>
-          ) : (
+          ) : row.ana_needed ? (
             <RequestAna id={row.id} orderKey={row.order_key} returnTo={returnTo} />
+          ) : (
+            <span className="text-xs text-muted">—</span>
           )}
         </td>
       ) : null}

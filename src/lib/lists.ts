@@ -38,6 +38,7 @@ export const ORIGINS = [
   "Portugal",
   "AliExpress",
   "Brasil",
+  "Pronta entrega",
   "Particular",
   "Tag",
   "Global Alvaro",
