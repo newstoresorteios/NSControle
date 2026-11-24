@@ -8,26 +8,54 @@ import { approvedFinanceOrder, FINANCE_STATUS_OUT, financeSlices, monthSummary, 
 import { asNumber, brl, monthLabel, percent } from "@/lib/format";
 import { trayConfigured } from "@/lib/tray-client";
 
-const QUEUES = [
+const PENDENCIAS = [
   {
     id: "vindi",
     label: "A enviar Vindi",
-    hint: "Venda do mês já lançada, com status A enviar Vindi: o pagamento ao fornecedor ainda não foi enviado.",
+    hint: "Pagamento ao fornecedor ainda não enviado.",
+    href: "/pedidos?fila=vindi",
+  },
+  {
+    id: "a_enviar",
+    label: "A enviar",
+    hint: "Pedido pronto para envio, fora da fila da Vindi.",
+    href: "/pedidos?fila=a_enviar",
   },
   {
     id: "devolucao",
     label: "Devolução",
-    hint: "Pedidos do mês cujo último evento dos Correios é devolução ao remetente.",
+    hint: "Último evento dos Correios é devolução ao remetente.",
+    href: "/pedidos?fila=devolucao",
   },
   {
     id: "alfandega",
     label: "Alfândega",
-    hint: "Pedidos do mês cujo último evento dos Correios foi lido como fiscalização ou recebimento no Brasil.",
+    hint: "Último evento dos Correios foi lido como fiscalização ou recebimento no Brasil.",
+    href: "/pedidos?fila=alfandega",
   },
   {
     id: "sem_retorno",
     label: "Sem retorno",
-    hint: "Pedidos do mês em que a consulta do rastreio falhou ou o objeto ficou sem movimento. É a leitura do Correios, separada da fila de 15 dias.",
+    hint: "A consulta do rastreio falhou ou o objeto ficou sem movimento.",
+    href: "/pedidos?fila=sem_retorno",
+  },
+  {
+    id: "sem_rastreio",
+    label: "Sem rastreio",
+    hint: "Venda lançada e ainda sem código de rastreio, em qualquer mês.",
+    href: "/pedidos?fila=sem_rastreio",
+  },
+  {
+    id: "sem_rastreio_15",
+    label: "Sem rastreio há 15 dias",
+    hint: "Pagos há mais de 15 dias e ainda sem código.",
+    href: "/?atraso=1#atraso",
+  },
+  {
+    id: "imposto",
+    label: "Imposto em aberto",
+    hint: "Taxa de importação lançada e ainda não confirmada como paga.",
+    href: "/financeiro?aba=taxas",
   },
 ] as const;
 
@@ -112,22 +140,52 @@ export default async function HomePage({
   const configured = trayConfigured();
   const month = saoPauloMonth();
   const sql = db();
-  const [syncRows, countRows, goalRows, moneyRows] = await Promise.all([
+  const [syncRows, countRows, macroRows, goalRows, moneyRows] = await Promise.all([
     sql<{ last_run_at: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
       select last_run_at, last_report from ctl_tray_sync
       where id = 'orders'
       limit 1
     `,
-    sql<{ month: string; vindi: number; devolucao: number; alfandega: number; sem_retorno: number }[]>`
+    sql<{ month: string; vindi: number; a_enviar: number; devolucao: number; alfandega: number; sem_retorno: number; sem_rastreio: number; sem_rastreio_15: number; imposto: number }[]>`
       select
         to_char(finance_month, 'YYYY-MM') as month,
         count(*) filter (where commercial_status = 'A ENVIAR VINDI')::int as vindi,
+        count(*) filter (where delivered = false and commercial_status = 'A ENVIAR')::int as a_enviar,
         count(*) filter (where tracking_situation ilike '%DEVOLU%')::int as devolucao,
         count(*) filter (where tracking_situation ilike '%ALF%')::int as alfandega,
-        count(*) filter (where tracking_situation ilike '%Sem retorno%')::int as sem_retorno
+        count(*) filter (where tracking_situation ilike '%Sem retorno%')::int as sem_retorno,
+        count(*) filter (where delivered = false
+          and nullif(btrim(coalesce(tracking_code, '')), '') is null
+          and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
+          and (sale_amount is not null or payment_date is not null))::int as sem_rastreio,
+        count(*) filter (where delivered = false
+          and sale_amount is not null
+          and nullif(btrim(coalesce(tracking_code, '')), '') is null
+          and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
+          and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15)::int as sem_rastreio_15,
+        count(*) filter (where tax_paid = false and import_tax is not null and coalesce(commercial_status, '') !~* 'cancel')::int as imposto
       from ctl_orders
       where finance_month is not null
       group by 1
+    `,
+    sql<{ vindi: number; a_enviar: number; devolucao: number; alfandega: number; sem_retorno: number; sem_rastreio: number; sem_rastreio_15: number; imposto: number }[]>`
+      select
+        count(*) filter (where commercial_status = 'A ENVIAR VINDI')::int as vindi,
+        count(*) filter (where delivered = false and commercial_status = 'A ENVIAR')::int as a_enviar,
+        count(*) filter (where tracking_situation ilike '%DEVOLU%')::int as devolucao,
+        count(*) filter (where tracking_situation ilike '%ALF%')::int as alfandega,
+        count(*) filter (where tracking_situation ilike '%Sem retorno%')::int as sem_retorno,
+        count(*) filter (where delivered = false
+          and nullif(btrim(coalesce(tracking_code, '')), '') is null
+          and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
+          and (sale_amount is not null or payment_date is not null))::int as sem_rastreio,
+        count(*) filter (where delivered = false
+          and sale_amount is not null
+          and nullif(btrim(coalesce(tracking_code, '')), '') is null
+          and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
+          and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15)::int as sem_rastreio_15,
+        count(*) filter (where tax_paid = false and import_tax is not null and coalesce(commercial_status, '') !~* 'cancel')::int as imposto
+      from ctl_orders
     `,
     sql<{ month: string; target_amount: string }[]>`
       select month, target_amount from ctl_monthly_goals
@@ -178,19 +236,9 @@ export default async function HomePage({
   const currentGoal = goalByMonth.get(selected) ?? null;
   const summary = monthSummary(byMonth.get(selected) ?? [], asNumber(currentGoal), selected);
   const tally = tallyByMonth.get(selected);
-  const counts = QUEUES.map((queue) => tally?.[queue.id] ?? 0);
-  const monthStart = `${selected}-01`;
-  const [lateCountRows, lateRows] = await Promise.all([
-    sql<{ total: number }[]>`
-      select count(*)::int as total
-      from ctl_orders
-      where delivered = false
-        and sale_amount is not null
-        and nullif(btrim(coalesce(tracking_code, '')), '') is null
-        and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
-        and finance_month = ${monthStart}
-        and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
-    `,
+  const macro = macroRows[0];
+  const backlog = monthSummary(approved, null, selected);
+  const [lateRows] = await Promise.all([
     params.atraso === "1"
       ? sql<{
           id: string;
@@ -208,14 +256,13 @@ export default async function HomePage({
             and sale_amount is not null
             and nullif(btrim(coalesce(tracking_code, '')), '') is null
             and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
-            and finance_month = ${monthStart}
             and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
           order by coalesce(payment_date, purchase_date) asc nulls last
           limit 200
         `
       : Promise.resolve([]),
   ]);
-  const late = lateCountRows[0]?.total ?? 0;
+  const late = macro?.sem_rastreio_15 ?? 0;
   const showLate = params.atraso === "1";
 
   return (
@@ -241,45 +288,76 @@ export default async function HomePage({
       </div>
 
       <section className="grid gap-3">
-        <h2 className="section-title">O que fazer agora</h2>
+        <div>
+          <h2 className="section-title">Pendências do sistema</h2>
+          <p className="mt-1 text-sm text-muted">Total em aberto, de todos os meses. A linha de baixo é só {monthLabel(selected)}.</p>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {QUEUES.map((queue, index) => (
-            <Link key={queue.id} href={`/pedidos?fila=${queue.id}&mes=${selected}`} className="card stat block">
-              <p className="kicker">{queue.label}</p>
-              <p className="num mt-2 text-4xl font-medium tracking-tight">{counts[index]}</p>
-              <p className="mt-1 text-sm text-muted">{queue.hint}</p>
-            </Link>
-          ))}
+          {PENDENCIAS.map((item) => {
+            const total = macro?.[item.id] ?? 0;
+            const inMonth = tally?.[item.id] ?? 0;
+            const href = item.id === "sem_rastreio_15"
+              ? (showLate ? `/?month=${selected}` : `/?month=${selected}&atraso=1#atraso`)
+              : item.href;
+            return (
+              <Link key={item.id} href={href} className="card stat block">
+                <p className="kicker">{item.label}</p>
+                <p className={`num mt-2 text-4xl font-medium tracking-tight ${total ? "text-danger" : ""}`}>{total}</p>
+                <p className="mt-1 text-sm">{inMonth} em {monthLabel(selected)}</p>
+                <p className="mt-1 text-sm text-muted">{item.id === "sem_rastreio_15" && showLate ? "Ocultar a lista" : item.hint}</p>
+              </Link>
+            );
+          })}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Link href={`/financeiro?month=${selected}&aba=pendencias&falta=compra`} className="card stat block">
+            <p className="kicker">Sem preço de compra</p>
+            <p className={`num mt-2 text-4xl font-medium tracking-tight ${backlog.semCompra ? "text-danger" : ""}`}>{backlog.semCompra}</p>
+            <p className="mt-1 text-sm">{summary.semCompra} em {monthLabel(selected)}</p>
+            <p className="mt-1 text-sm text-muted">Venda lançada e custo de compra ainda em branco.</p>
+          </Link>
+          <Link href={`/financeiro?month=${selected}&aba=pendencias&falta=alfandega`} className="card stat block">
+            <p className="kicker">Sem taxa alfandegária</p>
+            <p className={`num mt-2 text-4xl font-medium tracking-tight ${backlog.semAlfandega ? "text-danger" : ""}`}>{backlog.semAlfandega}</p>
+            <p className="mt-1 text-sm">{summary.semAlfandega} em {monthLabel(selected)}</p>
+            <p className="mt-1 text-sm text-muted">Importação que ainda exige o imposto. Pronta entrega fica de fora.</p>
+          </Link>
+          <Link href={`/financeiro?month=${selected}&aba=pendencias&falta=envio`} className="card stat block">
+            <p className="kicker">Sem custo de envio</p>
+            <p className={`num mt-2 text-4xl font-medium tracking-tight ${backlog.semEnvio ? "text-danger" : ""}`}>{backlog.semEnvio}</p>
+            <p className="mt-1 text-sm">{summary.semEnvio} em {monthLabel(selected)}</p>
+            <p className="mt-1 text-sm text-muted">Venda lançada e frete ainda em branco.</p>
+          </Link>
+          <Link href={`/financeiro?month=${selected}`} className="card stat block">
+            <p className="kicker">Sem taxa de pagamento</p>
+            <p className={`num mt-2 text-4xl font-medium tracking-tight ${backlog.semTaxa ? "text-danger" : ""}`}>{backlog.semTaxa}</p>
+            <p className="mt-1 text-sm">{summary.semTaxa} em {monthLabel(selected)}</p>
+            <p className="mt-1 text-sm text-muted">Pedido com venda e tarifa do gateway ainda vazia.</p>
+          </Link>
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2">
         <article className="card stat">
-          <p className="kicker">Alfândega</p>
+          <p className="kicker">Alfândega de {monthLabel(selected)}</p>
           <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.alfandega)}</p>
           <p className="mt-1 text-sm text-muted">Valor lançado no mês. Pronta entrega fica de fora da pendência.</p>
         </article>
         <article className="card stat">
-          <p className="kicker">Taxa de pagamento</p>
+          <p className="kicker">Taxa de pagamento de {monthLabel(selected)}</p>
           <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.taxaMaquina)}</p>
           <p className="mt-1 text-sm text-muted">
             {summary.taxaMaquina > 0
-              ? "Taxa gravada na ficha dos pedidos aprovados deste mês."
-              : "Nenhum pedido aprovado deste mês tem taxa gravada. A loja ainda não devolveu a taxa do meio de pagamento."}
+              ? "Taxa gravada na ficha dos pedidos deste mês."
+              : "Nenhum pedido deste mês tem taxa gravada. A loja ainda não devolveu a taxa do meio de pagamento."}
           </p>
         </article>
-        <Link href={showLate ? `/?month=${selected}` : `/?month=${selected}&atraso=1#atraso`} className="card stat block">
-          <p className="kicker">Sem rastreio há 15 dias</p>
-          <p className={`num mt-2 text-3xl font-medium tracking-tight ${late ? "text-danger" : ""}`}>{late}</p>
-          <p className="mt-1 text-sm text-muted">Venda deste mês já lançada, paga há mais de 15 dias e ainda sem código de rastreio.</p>
-          <p className="mt-1 text-sm text-muted">{late ? (showLate ? "Ocultar a lista" : "Ver os pedidos") : "Nada em aberto neste mês."}</p>
-        </Link>
       </section>
 
       {showLate ? (
         <section id="atraso" className="card overflow-x-auto">
-          <h2 className="section-title">Pedidos aprovados sem código de rastreio</h2>
-          <p className="mt-1 text-sm text-muted">Pedidos de {monthLabel(selected)} com venda lançada, pagos há mais de 15 dias e ainda sem código de rastreio.</p>
+          <h2 className="section-title">Sem rastreio há 15 dias</h2>
+          <p className="mt-1 text-sm text-muted">Todo o sistema: venda lançada, paga há mais de 15 dias e ainda sem código. A lista mostra os 200 mais antigos.</p>
           <table className="mt-3">
             <thead>
               <tr>

@@ -31,6 +31,8 @@ const FILAS: Record<string, string> = {
   alfandega: "Alfândega",
   sem_retorno: "Sem retorno",
   vindi: "A enviar Vindi",
+  a_enviar: "A enviar",
+  sem_rastreio: "Sem rastreio",
 };
 
 const COLUMNS =
@@ -461,7 +463,7 @@ function idPresenceClause(sql: SqlTag, filters: SheetFilters) {
 }
 
 function abaClause(sql: SqlTag, filters: SheetFilters) {
-  if (filters.textSearch) return sql``;
+  if (filters.textSearch || filters.fila === "sem_rastreio" || filters.fila === "a_enviar") return sql``;
   if (filters.aba === "pedidos") {
     return sql`and delivered = false and (origin is not null or tray_modified_at is not null)`;
   }
@@ -522,6 +524,13 @@ function filaClause(sql: SqlTag, filters: SheetFilters) {
   if (filters.fila === "alfandega") return sql`and tracking_situation ilike '%ALF%'`;
   if (filters.fila === "sem_retorno") return sql`and tracking_situation ilike '%Sem retorno%'`;
   if (filters.fila === "vindi") return sql`and commercial_status = 'A ENVIAR VINDI'`;
+  if (filters.fila === "a_enviar") return sql`and delivered = false and commercial_status = 'A ENVIAR'`;
+  if (filters.fila === "sem_rastreio") {
+    return sql`and delivered = false
+      and nullif(btrim(coalesce(tracking_code, '')), '') is null
+      and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
+      and (sale_amount is not null or payment_date is not null)`;
+  }
   return sql``;
 }
 
@@ -541,7 +550,8 @@ function sheetOrder(sql: SqlTag, archive: boolean, aba: SheetMode) {
 
 function resolveAba(aba: string | undefined, fila: string | undefined): SheetMode {
   if (aba === "pedidos" || aba === "acompanhamento" || aba === "rastreio" || aba === "entregues") return aba;
-  if (fila === "vindi") return "acompanhamento";
+  if (fila === "vindi" || fila === "a_enviar") return "acompanhamento";
+  if (fila === "sem_rastreio") return "pedidos";
   if (fila) return "rastreio";
   return "pedidos";
 }
