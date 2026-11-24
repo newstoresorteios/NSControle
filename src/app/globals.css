@@ -298,6 +298,10 @@ select.tone-info {
   padding: 1.15rem 1.25rem;
 }
 
+.card-tight {
+  padding: 0.65rem 0.75rem;
+}
+
 a.card:hover {
   border-color: var(--ink);
 }
@@ -329,6 +333,32 @@ a.card:hover {
 .stat-info {
   border-top-color: var(--info);
   background: linear-gradient(#ecfeff, white 3rem);
+}
+
+.band {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 1.15rem 1.25rem 1.25rem;
+}
+
+.band-month {
+  border-top: 4px solid var(--brand);
+  background: linear-gradient(#eff6ff, #fff 5.5rem);
+}
+
+.band-quarter {
+  border-top: 4px solid var(--ink);
+}
+
+.month-frame {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 0.95rem 1rem 1rem;
+}
+
+.month-frame-current {
+  border-top: 4px solid var(--brand);
+  background: linear-gradient(#eff6ff, #fff 3.2rem);
 }
 
 .page-title {

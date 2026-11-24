@@ -242,10 +242,26 @@ export default async function HomePage({
         ) : null}
       </div>
 
-      <section className="grid gap-3">
+      <section className="band band-month grid gap-3">
         <div>
-          <h2 className="section-title">Pendências de {monthLabel(selected)}</h2>
-          <p className="mt-1 text-sm text-muted">Só o mês do filtro. Os três meses aparecem na tabela de baixo.</p>
+          <h2 className="section-title">{monthLabel(selected)}</h2>
+          <p className="mt-1 text-sm text-muted">Pendências e valores só deste mês.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <article className="card stat stat-info">
+            <p className="kicker">Alfândega</p>
+            <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.alfandega)}</p>
+            <p className="mt-1 text-sm text-muted">Valor lançado no mês. Pronta entrega fica de fora da pendência.</p>
+          </article>
+          <article className="card stat">
+            <p className="kicker">Taxa de pagamento</p>
+            <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.taxaMaquina)}</p>
+            <p className="mt-1 text-sm text-muted">
+              {summary.taxaMaquina > 0
+                ? "Taxa gravada na ficha dos pedidos deste mês."
+                : "Nenhum pedido deste mês tem taxa gravada. A loja ainda não devolveu a taxa do meio de pagamento."}
+            </p>
+          </article>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {PENDENCIAS.map((item) => {
@@ -284,110 +300,67 @@ export default async function HomePage({
         </div>
       </section>
 
-      <section className="card overflow-x-auto">
-        <h2 className="section-title">Últimos 3 meses</h2>
-        <p className="mt-1 text-sm text-muted">
-          {windowMonths.map((item) => monthLabel(item)).join(", ")}. A coluna de {monthLabel(selected)} é o mês do filtro.
-        </p>
-        <table className="mt-3">
-          <thead>
-            <tr>
-              <th>Valor</th>
-              {windowMonths.map((item) => (
-                <th key={item} className={item === selected ? "text-ink" : ""}>{monthLabel(item)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(
-              [
-                ["Loja nova", (item: ReturnType<typeof monthSummary>) => brl(item.vendasLoja)],
-                ["Loja antiga", (item: ReturnType<typeof monthSummary>) => brl(item.vendasEncomenda)],
-                ["Total (nova + antiga)", (item: ReturnType<typeof monthSummary>) => brl(item.vendasLojas)],
-                ["Compra", (item: ReturnType<typeof monthSummary>) => brl(item.custoCompra)],
-                ["Frete", (item: ReturnType<typeof monthSummary>) => brl(item.frete)],
-                ["Alfândega", (item: ReturnType<typeof monthSummary>) => brl(item.alfandega)],
-                ["Taxa de pagamento", (item: ReturnType<typeof monthSummary>) => brl(item.taxaMaquina)],
-                ["Custo", (item: ReturnType<typeof monthSummary>) => brl(item.custoTotal)],
-                ["Lucro", (item: ReturnType<typeof monthSummary>) => brl(item.resultado)],
-              ] as const
-            ).map(([label, value]) => (
-              <tr key={label}>
-                <td>{label}</td>
-                {windowMonths.map((item) => (
-                  <td key={item} className={`num ${item === selected ? "font-medium" : ""}`}>
-                    {value(windowSummaries.get(item)!)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <table className="mt-6">
-          <thead>
-            <tr>
-              <th>Pendência</th>
-              {windowMonths.map((item) => (
-                <th key={item}>{monthLabel(item)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {PENDENCIAS.map((item) => (
-              <tr key={item.id}>
-                <td>{item.label}</td>
-                {windowMonths.map((month) => {
-                  const count = tallyByMonth.get(month)?.[item.id] ?? 0;
-                  return (
-                    <td key={month} className={`num ${count ? "text-danger" : ""} ${month === selected ? "font-medium" : ""}`}>
-                      <Link className="underline" href={queueHref(item.id, month)}>{count}</Link>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-            {(
-              [
-                ["Sem preço de compra", "semCompra", "compra"],
-                ["Sem taxa alfandegária", "semAlfandega", "alfandega"],
-                ["Sem custo de envio", "semEnvio", "envio"],
-                ["Sem taxa de pagamento", "semTaxa", ""],
-              ] as const
-            ).map(([label, field, falta]) => (
-              <tr key={field}>
-                <td>{label}</td>
-                {windowMonths.map((month) => {
-                  const count = windowSummaries.get(month)?.[field] ?? 0;
-                  const href = falta
-                    ? `/financeiro?month=${month}&aba=pendencias&falta=${falta}`
-                    : `/financeiro?month=${month}`;
-                  return (
-                    <td key={month} className={`num ${count ? "text-danger" : ""} ${month === selected ? "font-medium" : ""}`}>
-                      <Link className="underline" href={href}>{count}</Link>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2">
-        <article className="card stat">
-          <p className="kicker">Alfândega de {monthLabel(selected)}</p>
-          <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.alfandega)}</p>
-          <p className="mt-1 text-sm text-muted">Valor lançado no mês. Pronta entrega fica de fora da pendência.</p>
-        </article>
-        <article className="card stat">
-          <p className="kicker">Taxa de pagamento de {monthLabel(selected)}</p>
-          <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.taxaMaquina)}</p>
-          <p className="mt-1 text-sm text-muted">
-            {summary.taxaMaquina > 0
-              ? "Taxa gravada na ficha dos pedidos deste mês."
-              : "Nenhum pedido deste mês tem taxa gravada. A loja ainda não devolveu a taxa do meio de pagamento."}
-          </p>
-        </article>
+      <section className="band band-quarter grid gap-4">
+        <div>
+          <h2 className="section-title">Últimos 3 meses</h2>
+          <p className="mt-1 text-sm text-muted">Cada mês no seu retângulo. A faixa azul marca {monthLabel(selected)}.</p>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          {windowMonths.map((month) => {
+            const itemSummary = windowSummaries.get(month);
+            if (!itemSummary) return null;
+            const monthTally = tallyByMonth.get(month);
+            const current = month === selected;
+            const figures = [
+              ["Loja nova", brl(itemSummary.vendasLoja)],
+              ["Loja antiga", brl(itemSummary.vendasEncomenda)],
+              ["Total", brl(itemSummary.vendasLojas)],
+              ["Compra", brl(itemSummary.custoCompra)],
+              ["Frete", brl(itemSummary.frete)],
+              ["Alfândega", brl(itemSummary.alfandega)],
+              ["Taxa de pagamento", brl(itemSummary.taxaMaquina)],
+              ["Custo", brl(itemSummary.custoTotal)],
+              ["Lucro", brl(itemSummary.resultado)],
+            ] as const;
+            const gaps = [
+              ["Sem preço de compra", itemSummary.semCompra, `/financeiro?month=${month}&aba=pendencias&falta=compra`],
+              ["Sem taxa alfandegária", itemSummary.semAlfandega, `/financeiro?month=${month}&aba=pendencias&falta=alfandega`],
+              ["Sem custo de envio", itemSummary.semEnvio, `/financeiro?month=${month}&aba=pendencias&falta=envio`],
+              ["Sem taxa de pagamento", itemSummary.semTaxa, `/financeiro?month=${month}`],
+            ] as const;
+            return (
+              <article key={month} className={`month-frame grid gap-3 ${current ? "month-frame-current" : ""}`}>
+                <h3 className="section-title">{monthLabel(month)}</h3>
+                <dl className="grid gap-1 text-sm">
+                  {figures.map(([label, value]) => (
+                    <div key={label} className="flex items-baseline justify-between gap-3 border-b border-line py-1">
+                      <dt className="text-muted">{label}</dt>
+                      <dd className={`num ${label === "Lucro" && itemSummary.resultado < 0 ? "text-danger" : ""}`}>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div className="grid grid-cols-2 gap-2">
+                  {PENDENCIAS.map((item) => {
+                    const count = monthTally?.[item.id] ?? 0;
+                    const href = item.id === "sem_rastreio_15" && showLate && current ? `/?month=${month}` : queueHref(item.id, month);
+                    return (
+                      <Link key={item.id} href={href} className="card card-tight stat block">
+                        <p className="kicker">{item.label}</p>
+                        <p className={`num mt-1 text-2xl font-medium ${count ? "text-danger" : ""}`}>{count}</p>
+                      </Link>
+                    );
+                  })}
+                  {gaps.map(([label, count, href]) => (
+                    <Link key={label} href={href} className="card card-tight stat block">
+                      <p className="kicker">{label}</p>
+                      <p className={`num mt-1 text-2xl font-medium ${count ? "text-danger" : ""}`}>{count}</p>
+                    </Link>
+                  ))}
+                </div>
+              </article>
+            );
+          })}
+        </div>
       </section>
 
       {showLate ? (
