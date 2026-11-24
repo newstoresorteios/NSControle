@@ -152,6 +152,14 @@ export function positiveGatewayFee(value: unknown): number | null {
   return rate != null && rate > 0 ? rate : null;
 }
 
+export function historicalFeeCursor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const split = trimmed.indexOf("|");
+  if (split <= 0 || split === trimmed.length - 1) return null;
+  return trimmed;
+}
+
 export function orderNeedsLoad(
   existing: { tray_modified_at: string | null; origin: string | null; payment_fee?: unknown } | null,
   listed: { modified?: unknown; payment_method_rate?: unknown },

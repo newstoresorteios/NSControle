@@ -7,6 +7,7 @@ import {
   buildTrayDraft,
   cancellationFromTray,
   mergeTrayOrder,
+  historicalFeeCursor,
   orderNeedsLoad,
   orderIdFromEvent,
   positiveGatewayFee,
@@ -125,8 +126,7 @@ async function readState(): Promise<SyncState> {
 
 function feeCursorOf(report: unknown): string | null {
   if (!report || typeof report !== "object") return null;
-  const value = (report as { fee_cursor?: unknown }).fee_cursor;
-  return typeof value === "string" && value.trim() ? value : null;
+  return historicalFeeCursor((report as { fee_cursor?: unknown }).fee_cursor);
 }
 
 async function claim(force: boolean): Promise<SyncState | null> {
@@ -292,29 +292,32 @@ async function pullOne(key: string, listedModified: unknown) {
   return { upserted: true, cancellation, payment_fee: draft.payment_fee };
 }
 
-const FEE_SYNC_LIMIT = 10;
+const HISTORICAL_FEE_LIMIT = 25;
+const HISTORICAL_FEE_BUDGET_MS = 25_000;
 
 async function missingFeeKeys(limit: number, cursor: string | null) {
-  const load = (after: string | null, size: number) => db()<{ order_key: string }[]>`
-    select order_key
+  const load = (after: string | null, size: number) => db()<{ order_key: string; sort_key: string }[]>`
+    select order_key, sort_key
     from (
-      select distinct on (order_key) order_key
+      select distinct on (order_key)
+        order_key,
+        coalesce(to_char(finance_month, 'YYYY-MM-DD'), '9999-12-31') || '|' || order_key as sort_key
       from ctl_orders
       where (payment_fee is null or payment_fee = 0)
         and order_key ~ '^[0-9]+(:[0-9]+)?$'
-        and (${after}::text is null or order_key > ${after})
         and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
         and (
           data_source is distinct from 'tray'
           or sale_amount is not null
           or payment_date is not null
         )
-      order by order_key
+      order by order_key, finance_month asc nulls last
     ) missing
-    order by order_key
+    where (${after}::text is null or sort_key > ${after})
+    order by sort_key
     limit ${size}
   `;
-  let rows: { order_key: string }[] = await load(cursor, limit);
+  let rows: { order_key: string; sort_key: string }[] = await load(cursor, limit);
   if (cursor && rows.length < limit) {
     const seen = new Set(rows.map((row) => row.order_key));
     const rest = await load(null, limit - rows.length);
@@ -339,14 +342,18 @@ async function countMissingFees() {
   return rows[0]?.total ?? 0;
 }
 
-async function refreshMissingFees(limit: number, cursor: string | null) {
+async function refreshMissingFees(limit: number, cursor: string | null, deadlineAt: number) {
   const rows = await missingFeeKeys(limit, cursor);
   let filled = 0;
   let checked = 0;
   let failures = 0;
+  let nextCursor = cursor;
   for (const row of rows) {
+    if (Date.now() >= deadlineAt) break;
     if (checked > 0) await pause();
+    if (Date.now() >= deadlineAt) break;
     checked += 1;
+    nextCursor = row.sort_key;
     try {
       const result = await pullOne(row.order_key, null);
       if (!result.upserted) failures += 1;
@@ -361,7 +368,7 @@ async function refreshMissingFees(limit: number, cursor: string | null) {
     filled,
     failures,
     pending: await countMissingFees(),
-    cursor: rows.length ? rows[rows.length - 1].order_key : null,
+    cursor: nextCursor,
   };
 }
 
@@ -389,15 +396,18 @@ async function execute(state: SyncState, progress: Progress, today: string) {
   const fees = await db()`
     update ctl_orders
     set payment_fee = substring(notes_tray from 'tarifa ([0-9]+([.][0-9]+)?)')::numeric
-    where payment_fee is null
+    where (payment_fee is null or payment_fee = 0)
       and substring(notes_tray from 'tarifa ([0-9]+([.][0-9]+)?)') ~ '^[0-9]'
       and substring(notes_tray from 'tarifa ([0-9]+([.][0-9]+)?)')::numeric > 0
   `;
   progress.upserted += fees.count;
   progress.upserted += filled.count;
 
-  const feePass = await refreshMissingFees(Math.min(FEE_SYNC_LIMIT, BATCH), progress.feeCursor);
-  progress.fetched += feePass.checked;
+  const feePass = await refreshMissingFees(
+    HISTORICAL_FEE_LIMIT,
+    progress.feeCursor,
+    Date.now() + HISTORICAL_FEE_BUDGET_MS,
+  );
   progress.upserted += feePass.checked - feePass.failures;
   progress.failures += feePass.failures;
   progress.feesChecked = feePass.checked;
@@ -565,7 +575,7 @@ export async function runPaymentFeeRefresh(options?: { force?: boolean }): Promi
     feeCursor: state.fee_cursor,
   };
   try {
-    const feePass = await refreshMissingFees(BATCH, state.fee_cursor);
+    const feePass = await refreshMissingFees(40, state.fee_cursor, Date.now() + 45_000);
     progress.fetched = feePass.checked;
     progress.upserted = feePass.checked - feePass.failures;
     progress.failures = feePass.failures;

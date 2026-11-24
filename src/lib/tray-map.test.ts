@@ -7,6 +7,7 @@ import {
   isSameTrayVersion,
   mergeTrayOrder,
   needsTrayRefresh,
+  historicalFeeCursor,
   orderNeedsLoad,
   orderIdFromEvent,
   orderListFilters,
@@ -221,6 +222,13 @@ test("a carga relê pedido sem tarifa positiva do gateway", () => {
     false,
   );
   assert.equal(orderNeedsLoad(stored, { modified: "2026-11-21T12:00:00.000Z", payment_method_rate: "30.52" }), true);
+});
+
+test("o cursor da taxa histórica guarda mês e pedido", () => {
+  assert.equal(historicalFeeCursor("2024-03-01|14022"), "2024-03-01|14022");
+  assert.equal(historicalFeeCursor("9999-12-31|1490060:475"), "9999-12-31|1490060:475");
+  assert.equal(historicalFeeCursor("26726"), null);
+  assert.equal(historicalFeeCursor(null), null);
 });
 
 test("sincronização preserva produto, referência, pagamento e rastreio preenchidos manualmente", () => {
