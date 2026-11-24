@@ -27,6 +27,7 @@ export type SheetOrder = {
   tracking_alert: string | null;
   tracking_correios: string | null;
   tracking_event_local: string;
+  tracking_checked_local: string;
   purchase_date: string | null;
   payment_date: string | null;
   commercial_status: string | null;
@@ -256,7 +257,8 @@ function RastreioHead() {
       <th>Status Correios</th>
       <th>Situação</th>
       <th>Alerta</th>
-      <th>Data</th>
+      <th>Data evento</th>
+      <th>Consultado</th>
       <th className="check">Entregue</th>
     </>
   );
@@ -291,6 +293,9 @@ function RastreioRow({ row }: { row: SheetOrder }) {
             save.run({ tracking_event_at: event.target.value });
           }}
         />
+      </td>
+      <td className="text-xs text-muted whitespace-nowrap">
+        {row.tracking_checked_local || "—"}
       </td>
       <td className="check">
         <CheckCell name="delivered" checked={row.delivered} onSave={save.run} />

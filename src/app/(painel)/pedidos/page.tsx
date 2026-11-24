@@ -36,7 +36,7 @@ const FILAS: Record<string, string> = {
 };
 
 const COLUMNS =
-  "id, label, order_key, origin, product_name, supplier_ref, supplier_name, supplier_purchase_date, purchased, cpf_linked, tax_paid, delivered, tracking_code, tracking_situation, tracking_alert, tracking_correios, tracking_event_at, purchase_date, payment_date, commercial_status, supplier_days, notes_internal, notes_robot, notes_human, notes_tray, exists(select 1 from ctl_integration_purchase_requests r where r.order_id = ctl_orders.id) as ana_requested";
+  "id, label, order_key, origin, product_name, supplier_ref, supplier_name, supplier_purchase_date, purchased, cpf_linked, tax_paid, delivered, tracking_code, tracking_situation, tracking_alert, tracking_correios, tracking_event_at, tracking_checked_at, purchase_date, payment_date, commercial_status, supplier_days, notes_internal, notes_robot, notes_human, notes_tray, exists(select 1 from ctl_integration_purchase_requests r where r.order_id = ctl_orders.id) as ana_requested";
 
 export default async function PedidosPage({
   searchParams,
@@ -341,8 +341,9 @@ export default async function PedidosPage({
   );
 }
 
-type RawOrder = Omit<SheetOrder, "tracking_event_local" | "days_open" | "tax_payment"> & {
+type RawOrder = Omit<SheetOrder, "tracking_event_local" | "tracking_checked_local" | "days_open" | "tax_payment"> & {
   tracking_event_at: string | null;
+  tracking_checked_at: string | null;
 };
 
 function toSheetOrder(order: RawOrder, taxPayment: string | null): SheetOrder {
@@ -352,6 +353,7 @@ function toSheetOrder(order: RawOrder, taxPayment: string | null): SheetOrder {
     ana_needed: needsAna(order),
     tax_payment: taxPayment,
     tracking_event_local: saoPauloLocal(order.tracking_event_at),
+    tracking_checked_local: saoPauloLocal(order.tracking_checked_at),
     days_open: daysSince(order.purchase_date),
   };
 }

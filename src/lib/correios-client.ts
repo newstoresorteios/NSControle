@@ -14,25 +14,42 @@ type TokenCache = { token: string; expiresAt: number };
 
 const globalForCorreios = globalThis as unknown as { correiosToken?: TokenCache };
 
+function env(...names: string[]) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+/** Prefer CORREIOS_API_* names; keep legacy CORREIOS_USUARIO/SENHA/CARTAO. */
+export function correiosEnv() {
+  return {
+    apiUrl: env("CORREIOS_API_URL") || "https://api.correios.com.br",
+    usuario: env("CORREIOS_API_USER", "CORREIOS_API_USUARIO", "CORREIOS_USUARIO"),
+    senha: env("CORREIOS_API_TOKEN", "CORREIOS_API_SENHA", "CORREIOS_SENHA"),
+    cartao: env("CORREIOS_API_CARTAO", "CORREIOS_CARTAO"),
+    contrato: env("CORREIOS_API_CONTRATO", "CORREIOS_CONTRATO"),
+    dr: env("CORREIOS_API_DR", "CORREIOS_DR"),
+    mock: env("CORREIOS_API_MOCK") === "1",
+  };
+}
+
 export function correiosConfigured(): boolean {
-  return Boolean(
-    process.env.CORREIOS_USUARIO?.trim() &&
-      process.env.CORREIOS_SENHA?.trim() &&
-      process.env.CORREIOS_CARTAO?.trim(),
-  );
+  if (correiosEnv().mock) return true;
+  const { usuario, senha } = correiosEnv();
+  return Boolean(usuario && senha);
 }
 
 function apiBase() {
-  const base = (process.env.CORREIOS_API_URL || "https://api.correios.com.br").trim().replace(/\/$/, "");
-  return `${base}/`;
+  return `${correiosEnv().apiUrl.replace(/\/$/, "")}/`;
 }
 
 function credentials() {
-  const usuario = process.env.CORREIOS_USUARIO?.trim();
-  const senha = process.env.CORREIOS_SENHA?.trim();
-  const cartao = process.env.CORREIOS_CARTAO?.trim();
-  if (!usuario || !senha || !cartao) throw new CorreiosRequestError("nao_configurado", 0);
-  return { usuario, senha, cartao };
+  const { usuario, senha, cartao, contrato, dr, mock } = correiosEnv();
+  if (mock) return { usuario: "mock", senha: "mock", cartao: "", contrato: "", dr: "" };
+  if (!usuario || !senha) throw new CorreiosRequestError("nao_configurado", 0);
+  return { usuario, senha, cartao, contrato, dr };
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
@@ -40,22 +57,27 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 }
 
 async function token(force: boolean): Promise<string> {
+  if (correiosEnv().mock) return "mock-token";
   const cached = globalForCorreios.correiosToken;
   if (!force && cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
-  const { usuario, senha, cartao } = credentials();
-  const body: Record<string, string | number> = { numero: cartao };
-  const contrato = process.env.CORREIOS_CONTRATO?.trim();
-  const dr = process.env.CORREIOS_DR?.trim();
-  if (contrato) body.contrato = contrato;
-  if (dr && Number.isFinite(Number(dr))) body.dr = Number(dr);
-  const response = await fetch(new URL("token/v1/autentica/cartaopostagem", apiBase()), {
+  const { usuario, senha, cartao, contrato, dr } = credentials();
+  const path = cartao ? "token/v1/autentica/cartaopostagem" : "token/v1/autentica";
+  const headers: Record<string, string> = {
+    Authorization: `Basic ${Buffer.from(`${usuario}:${senha}`).toString("base64")}`,
+    Accept: "application/json",
+  };
+  let body: string | undefined;
+  if (cartao) {
+    headers["Content-Type"] = "application/json";
+    const payload: Record<string, string | number> = { numero: cartao };
+    if (contrato) payload.contrato = contrato;
+    if (dr && Number.isFinite(Number(dr))) payload.dr = Number(dr);
+    body = JSON.stringify(payload);
+  }
+  const response = await fetch(new URL(path, apiBase()), {
     method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${usuario}:${senha}`).toString("base64")}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
+    headers,
+    body,
     cache: "no-store",
     signal: AbortSignal.timeout(20_000),
   });
@@ -74,8 +96,36 @@ export type CorreiosObject = {
   missing: boolean;
 };
 
+const MOCK_EVENTS: Record<string, CorreiosEvent> = {
+  AA123456789BR: {
+    codigo: "BDE",
+    tipo: "01",
+    descricao: "Objeto entregue ao destinatário",
+    dtHrCriado: "2026-11-20T14:30:00",
+  },
+  LX123456789ES: {
+    codigo: "PO",
+    tipo: "01",
+    descricao: "Objeto em trânsito - por favor aguarde",
+    dtHrCriado: "2026-11-22T09:00:00",
+  },
+};
+
+function mockTrack(codes: string[]): CorreiosObject[] {
+  return codes.map((code) => {
+    const event = MOCK_EVENTS[code] || {
+      codigo: "OEC",
+      tipo: "01",
+      descricao: "Objeto em trânsito - por favor aguarde",
+      dtHrCriado: new Date().toISOString().replace(/\.\d{3}Z$/, "").slice(0, 19),
+    };
+    return { code, event, missing: false };
+  });
+}
+
 export async function trackObjects(codes: string[]): Promise<CorreiosObject[]> {
   if (!codes.length) return [];
+  if (correiosEnv().mock) return mockTrack(codes);
   const bearer = await token(false);
   let response: Response;
   try {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { latestEvent, statusFromEvent } from "./correios-map.ts";
+import { commercialStatusWhenDelivered, latestEvent, statusFromEvent } from "./correios-map.ts";
 
 const now = new Date("2026-10-06T15:00:00.000Z");
 
@@ -77,4 +77,13 @@ test("eventos fora de ordem conservam o mais recente", () => {
 test("evento sem descrição ou sem data confiável não cria atualização datada", () => {
   assert.equal(statusFromEvent({ descricao: "", dtHrCriado: "2026-10-06T11:00:00" }, now), null);
   assert.equal(statusFromEvent({ descricao: "Estado desconhecido", dtHrCriado: "inválido" }, now)?.tracking_event_at, null);
+});
+
+test("entrega avança commercial_status para ENTREGUE sem inventar status", () => {
+  assert.equal(commercialStatusWhenDelivered("ENVIADO"), "ENTREGUE");
+  assert.equal(commercialStatusWhenDelivered("A ENVIAR"), "ENTREGUE");
+  assert.equal(commercialStatusWhenDelivered(null), "ENTREGUE");
+  assert.equal(commercialStatusWhenDelivered("CANCELADO"), null);
+  assert.equal(commercialStatusWhenDelivered("FINALIZADO"), null);
+  assert.equal(commercialStatusWhenDelivered("ENTREGUE"), null);
 });

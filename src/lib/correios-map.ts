@@ -62,3 +62,15 @@ export function statusFromEvent(event: CorreiosEvent, now = new Date()): Correio
     delivered,
   };
 }
+
+/**
+ * System order status when Correios reports delivered.
+ * Canonical flag is `ctl_orders.delivered` (planilha column "Entregue").
+ * Also advance `commercial_status` to ENTREGUE unless already archived/cancelled.
+ * Does not invent statuses — ENTREGUE is from COMMERCIAL_STATUSES / lists.ts.
+ */
+export function commercialStatusWhenDelivered(current: string | null | undefined): string | null {
+  const value = (current || "").trim().toUpperCase();
+  if (value === "CANCELADO" || value === "FINALIZADO" || value === "ENTREGUE") return null;
+  return "ENTREGUE";
+}

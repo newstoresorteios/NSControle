@@ -45,6 +45,7 @@ create table if not exists public.ctl_orders (
   tracking_alert text,
   tracking_correios text,
   tracking_event_at timestamptz,
+  tracking_checked_at timestamptz,
   purchase_date date,
   payment_date date,
   sale_amount numeric(14,2),

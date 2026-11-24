@@ -14,10 +14,11 @@ export type CorreiosReport = {
   updated: number;
   missing: number;
   failures: number;
+  delivered: number;
 };
 
 function empty(reason: string, ok: boolean): CorreiosReport {
-  return { ok, reason, checked: 0, updated: 0, missing: 0, failures: 0 };
+  return { ok, reason, checked: 0, updated: 0, missing: 0, failures: 0, delivered: 0 };
 }
 
 async function claim(force: boolean): Promise<number | null> {
@@ -50,7 +51,13 @@ async function finish(status: string, error: string | null, cursor: number, repo
       last_run_at = now(),
       last_status = ${status},
       last_error = ${error},
-      last_report = ${db().json({ checked: report.checked, updated: report.updated, missing: report.missing, failures: report.failures })}
+      last_report = ${db().json({
+        checked: report.checked,
+        updated: report.updated,
+        missing: report.missing,
+        failures: report.failures,
+        delivered: report.delivered,
+      })}
     where id = 'correios'
   `;
 }
@@ -99,6 +106,13 @@ export async function runCorreiosSync(options?: { force?: boolean }): Promise<Co
       for (const object of objects) {
         if (!object.code) continue;
         seen.add(object.code);
+        // Always stamp last consultation, even when the event did not advance.
+        await db()`
+          update ctl_orders
+          set tracking_checked_at = now()
+          where delivered = false
+            and upper(trim(tracking_code)) = ${object.code}
+        `;
         if (!object.event) {
           report.missing += 1;
           continue;
@@ -117,12 +131,20 @@ export async function runCorreiosSync(options?: { force?: boolean }): Promise<Co
             tracking_correios = ${status.tracking_correios},
             tracking_situation = ${status.tracking_situation},
             tracking_event_at = ${status.tracking_event_at},
-            delivered = ${status.delivered}
+            tracking_checked_at = now(),
+            delivered = ${status.delivered},
+            commercial_status = case
+              when ${status.delivered}
+                and upper(btrim(coalesce(commercial_status, ''))) not in ('CANCELADO', 'FINALIZADO', 'ENTREGUE')
+              then 'ENTREGUE'
+              else commercial_status
+            end
           where delivered = false
             and upper(trim(tracking_code)) = ${object.code}
             and (tracking_event_at is null or tracking_event_at < ${status.tracking_event_at}::timestamptz)
         `;
         report.updated += updated.count;
+        if (status.delivered && updated.count > 0) report.delivered += updated.count;
       }
       report.missing += codes.filter((code) => !seen.has(code)).length;
     }
