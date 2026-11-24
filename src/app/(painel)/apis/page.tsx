@@ -4,18 +4,28 @@ import { API_CALLS, API_SEARCH } from "@/lib/api-catalog";
 export default async function ApisPage() {
   await requireTeam();
   const groups = ["Consultar", "Gravar"] as const;
+  const token = (process.env.CLAUDE_API_TOKEN || "").trim();
   return (
     <div className="grid gap-5">
       <div>
         <h1 className="page-title">APIs</h1>
         <p className="max-w-3xl text-sm text-muted">
-          Manual para consultar o sistema, comparar com a planilha e lançar o que ainda está vazio:
-          pedido, taxa de pagamento, estoque, nota de intermediação e a leitura dos pagamentos.
-          A base é o endereço deste painel. Uma chamada de fora do navegador envia
-          <span className="font-mono"> Authorization: Bearer </span>
-          com o token de acesso do servidor.
+          Manual para consultar o sistema, comparar com a planilha, completar o que está vazio
+          e corrigir o que já foi gravado: pedido, compra, estoque, nota e pagamentos.
+          A base é o endereço deste painel. Quem já está logado aqui chama direto, sem token.
+          Uma chamada de fora envia <span className="font-mono"> Authorization: Bearer </span>
+          com a senha abaixo.
         </p>
       </div>
+      <section className="card">
+        <h2 className="section-title">Senha de acesso</h2>
+        <p className="mt-2 text-sm text-muted">Variável CLAUDE_API_TOKEN no servidor deste painel, na Vercel.</p>
+        {token ? (
+          <p className="mt-3 break-all font-mono text-sm">{token}</p>
+        ) : (
+          <p className="mt-3 text-sm">A senha ainda não está configurada neste servidor.</p>
+        )}
+      </section>
       <section className="card">
         <h2 className="section-title">Como pesquisar</h2>
         <ul className="mt-3 grid gap-2 text-sm">

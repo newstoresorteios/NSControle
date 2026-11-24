@@ -1,9 +1,10 @@
-import { claudeAuthorized, claudeConfigured, claudeGet, claudePost } from "@/lib/claude-api";
+import { claudeAuthorized, claudeConfigured, claudeGet, claudePanelAllowed, claudePost } from "@/lib/claude-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function denied() {
+async function gate(request: Request) {
+  if (claudeAuthorized(request) || (await claudePanelAllowed())) return null;
   if (!claudeConfigured()) {
     return Response.json({ ok: false, erro: "token_nao_configurado" }, { status: 503 });
   }
@@ -11,7 +12,8 @@ function denied() {
 }
 
 export async function GET(request: Request) {
-  if (!claudeAuthorized(request)) return denied();
+  const blocked = await gate(request);
+  if (blocked) return blocked;
   try {
     const body = await claudeGet(new URL(request.url));
     return Response.json(body);
@@ -21,7 +23,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!claudeAuthorized(request)) return denied();
+  const blocked = await gate(request);
+  if (blocked) return blocked;
   let payload: unknown;
   try {
     payload = await request.json();

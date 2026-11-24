@@ -1,9 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { API_CALLS } from "@/lib/api-catalog";
 import { FINANCE_STATUS_OUT, financeSlices, monthSummary } from "@/lib/finance";
 import { asNumber } from "@/lib/format";
+import { COMMERCIAL_STATUSES, INVENTORY_STATUSES, listedValue } from "@/lib/lists";
+import { validUuid } from "@/lib/operational";
+import { USER_EMAIL_HEADER, USER_ID_HEADER, requestUser } from "@/lib/request-user";
 
 export function claudeConfigured() {
   return Boolean((process.env.CLAUDE_API_TOKEN || "").trim());
@@ -15,6 +19,23 @@ export function claudeAuthorized(request: Request) {
   const supplied = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
   if (!expected || !supplied || supplied.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+}
+
+export async function claudePanelAllowed() {
+  const headerStore = await headers();
+  const user = requestUser(headerStore.get(USER_ID_HEADER), headerStore.get(USER_EMAIL_HEADER));
+  if (!user) return false;
+  const sql = db();
+  const [blocked] = await sql`
+    select email from ctl_integration_members where email = ${user.email} and role = 'redirect' limit 1
+  `;
+  if (blocked) return false;
+  const [member] = await sql`
+    select email from ctl_team_members where user_id = ${user.id} or email = ${user.email} limit 1
+  `;
+  if (member) return true;
+  const [allowed] = await sql`select email from ctl_allowed_emails where email = ${user.email} limit 1`;
+  return Boolean(allowed);
 }
 
 function monthOf(value: string | null) {
@@ -336,7 +357,8 @@ async function createNote(body: Record<string, unknown>) {
         shipping_cost = coalesce(shipping_cost, ${freight}),
         origin = coalesce(nullif(btrim(origin), ''), ${platform}),
         tracking_code = coalesce(nullif(btrim(tracking_code), ''), ${tracking}),
-        purchased = purchased or ${purchased}
+        purchased = case when ${purchased} then true else purchased end,
+        sourcing_status = case when ${purchased} then 'COMPRADO' else sourcing_status end
       where id = ${order.id}
     `;
   }
@@ -344,10 +366,103 @@ async function createNote(body: Record<string, unknown>) {
   return { status: 200, body: { ok: true, mes: month, linha: line, pedido: parsed.key } };
 }
 
+async function findOrder(key: string) {
+  const [order] = await db()<{
+    id: string;
+    tracking_code: string | null;
+    delivered: boolean;
+  }[]>`
+    select id, tracking_code, delivered
+    from ctl_orders
+    where order_key = ${key} or label = ${key}
+    order by finance_month desc nulls last
+    limit 1
+  `;
+  return order ?? null;
+}
+
+async function correctOrder(body: Record<string, unknown>) {
+  const key = text(body.pedido, 120);
+  if (!key) return { status: 400, body: { ok: false, erro: "pedido_obrigatorio" } };
+  const sent = (name: string) => Object.prototype.hasOwnProperty.call(body, name) && body[name] != null && body[name] !== "";
+  const status = sent("status") ? listedValue(COMMERCIAL_STATUSES, body.status) : null;
+  if (sent("status") && !status) return { status: 400, body: { ok: false, erro: "status_invalido" } };
+  const purchase = sent("compra") ? money(body.compra) : null;
+  const sale = sent("venda") ? money(body.venda) : null;
+  if (sent("compra") && purchase == null) return { status: 400, body: { ok: false, erro: "compra_invalida" } };
+  if (sent("venda") && sale == null) return { status: 400, body: { ok: false, erro: "venda_invalida" } };
+  const tracking = sent("rastreio") ? text(body.rastreio, 80) : "";
+  if (sent("rastreio") && !tracking) return { status: 400, body: { ok: false, erro: "rastreio_invalido" } };
+  const purchased = typeof body.comprado === "boolean" ? body.comprado : null;
+  if (!status && purchase == null && sale == null && !tracking && purchased == null) {
+    return { status: 400, body: { ok: false, erro: "nada_para_alterar" } };
+  }
+  const order = await findOrder(key);
+  if (!order) return { status: 404, body: { ok: false, erro: "pedido_nao_encontrado" } };
+  const nextTracking = tracking || (order.tracking_code ?? "").trim();
+  if (status === "ENVIADO" && !nextTracking && !order.delivered) {
+    return { status: 400, body: { ok: false, erro: "enviado_sem_rastreio" } };
+  }
+  const [saved] = await db()`
+    update ctl_orders set
+      commercial_status = case when ${Boolean(status)} then ${status} else commercial_status end,
+      purchase_amount = case when ${purchase != null} then ${purchase} else purchase_amount end,
+      sale_amount = case when ${sale != null} then ${sale} else sale_amount end,
+      tracking_code = case when ${Boolean(tracking)} then ${tracking} else tracking_code end,
+      purchased = case
+        when ${purchased === true} then true
+        when ${purchased === false} then false
+        else purchased
+      end,
+      sourcing_status = case when ${purchased === true} then 'COMPRADO' else sourcing_status end
+    where id = ${order.id}
+    returning order_key, commercial_status, sourcing_status, sale_amount, purchase_amount, tracking_code, purchased
+  `;
+  revalidatePath("/pedidos");
+  revalidatePath("/financeiro");
+  return { status: 200, body: { ok: true, pedido: saved } };
+}
+
+async function correctStock(body: Record<string, unknown>) {
+  const id = text(body.id, 40);
+  if (!validUuid(id)) return { status: 400, body: { ok: false, erro: "id_invalido" } };
+  const sent = (name: string) => Object.prototype.hasOwnProperty.call(body, name) && body[name] != null && body[name] !== "";
+  const status = sent("status") ? listedValue(INVENTORY_STATUSES, body.status) : null;
+  if (sent("status") && !status) return { status: 400, body: { ok: false, erro: "status_invalido" } };
+  const cost = sent("custo") ? money(body.custo) : null;
+  if (sent("custo") && cost == null) return { status: 400, body: { ok: false, erro: "custo_invalido" } };
+  if (!status && cost == null) return { status: 400, body: { ok: false, erro: "nada_para_alterar" } };
+  const [saved] = await db()`
+    update ctl_inventory_items set
+      status = case when ${Boolean(status)} then ${status} else status end,
+      cost = case when ${cost != null} then ${cost} else cost end
+    where id = ${id}
+    returning id, brand, model, cost, status
+  `;
+  if (!saved) return { status: 404, body: { ok: false, erro: "peca_nao_encontrada" } };
+  revalidatePath("/estoque");
+  return { status: 200, body: { ok: true, item: saved } };
+}
+
+async function deleteStock(body: Record<string, unknown>) {
+  const id = text(body.id, 40);
+  if (!validUuid(id)) return { status: 400, body: { ok: false, erro: "id_invalido" } };
+  const sql = db();
+  const [linked] = await sql`select id from ctl_integration_units where inventory_id = ${id} limit 1`;
+  if (linked) return { status: 409, body: { ok: false, erro: "peca_em_integracao" } };
+  const [removed] = await sql`delete from ctl_inventory_items where id = ${id} returning id`;
+  if (!removed) return { status: 404, body: { ok: false, erro: "peca_nao_encontrada" } };
+  revalidatePath("/estoque");
+  return { status: 200, body: { ok: true, id: removed.id } };
+}
+
 export async function claudePost(body: Record<string, unknown>) {
   const recurso = text(body.recurso, 40) || "pedido";
   if (recurso === "estoque") return createStock(body);
   if (recurso === "nota") return createNote(body);
+  if (recurso === "corrigir-pedido") return correctOrder(body);
+  if (recurso === "corrigir-estoque") return correctStock(body);
+  if (recurso === "excluir-estoque") return deleteStock(body);
   if (recurso !== "pedido") return { status: 400, body: { ok: false, erro: "recurso_desconhecido" } };
   const key = typeof body.pedido === "string" ? body.pedido.trim() : "";
   if (!key) return { status: 400, body: { ok: false, erro: "pedido_obrigatorio" } };
@@ -376,9 +491,10 @@ export async function claudePost(body: Record<string, unknown>) {
       tracking_code = coalesce(nullif(btrim(tracking_code), ''), nullif(${tracking}, '')),
       origin = coalesce(nullif(btrim(origin), ''), nullif(${origin}, '')),
       notes_internal = coalesce(notes_internal, nullif(${note}, '')),
-      purchased = purchased or ${purchased ?? false}
+      purchased = case when ${purchased === true} then true else purchased end,
+      sourcing_status = case when ${purchased === true} then 'COMPRADO' else sourcing_status end
     where id = ${order.id}
-    returning order_key, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, tracking_code, origin, purchased
+    returning order_key, commercial_status, sourcing_status, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, tracking_code, origin, purchased
   `;
   revalidatePath("/pedidos");
   revalidatePath("/financeiro");

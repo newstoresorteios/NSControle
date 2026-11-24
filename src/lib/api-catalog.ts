@@ -156,8 +156,60 @@ export const API_CALLS: ApiCall[] = [
   "observacao": "conferido com a planilha",
   "comprado": true
 }`,
-    returns: "ok e a ficha gravada.",
-    rule: "Campo que já tem valor permanece. Número usa ponto. pedido é o número da loja.",
+    returns: "ok e a ficha gravada, com o status da compra.",
+    rule: "Campo de valor que já existe permanece. comprado true marca a ficha como comprada e grava o status da compra COMPRADO. Número usa ponto. pedido é o número da loja.",
+  },
+  {
+    id: "corrigir-pedido",
+    group: "Gravar",
+    method: "POST",
+    path: "/api/claude",
+    title: "Corrigir um pedido",
+    use: "Substitui status, venda, compra ou rastreio que já estavam gravados.",
+    params: [],
+    body: `{
+  "recurso": "corrigir-pedido",
+  "pedido": "27076",
+  "status": "ENTREGUE",
+  "venda": 12500,
+  "compra": 8010,
+  "rastreio": "AB123456789BR",
+  "comprado": true
+}`,
+    returns: "ok e a ficha com os valores novos.",
+    rule: "Só muda o campo enviado. status é o comercial, como ENTREGUE, ENVIADO ou A ENVIAR VINDI. ENVIADO sem rastreio é recusado. comprado true também grava o status da compra COMPRADO.",
+  },
+  {
+    id: "corrigir-estoque",
+    group: "Gravar",
+    method: "POST",
+    path: "/api/claude",
+    title: "Corrigir uma peça",
+    use: "Substitui o custo ou o status de uma peça já cadastrada.",
+    params: [],
+    body: `{
+  "recurso": "corrigir-estoque",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "custo": 3874,
+  "status": "Vendido"
+}`,
+    returns: "ok e a peça atualizada.",
+    rule: "id é o que a consulta de estoque devolve. status aceita Disponível, Em negociação, Vendido, Comprado ou Taxa Paga.",
+  },
+  {
+    id: "excluir-estoque",
+    group: "Gravar",
+    method: "POST",
+    path: "/api/claude",
+    title: "Excluir uma peça",
+    use: "Apaga uma peça do estoque pelo id.",
+    params: [],
+    body: `{
+  "recurso": "excluir-estoque",
+  "id": "00000000-0000-4000-8000-000000000000"
+}`,
+    returns: "ok e o id excluído.",
+    rule: "Peça ligada à integração não é apagada.",
   },
   {
     id: "gravar-estoque",
@@ -181,7 +233,7 @@ export const API_CALLS: ApiCall[] = [
   "comprado_em": "2026-11-01"
 }`,
     returns: "ok e o item, com o id.",
-    rule: "modelo é obrigatório. status vazio vira Disponível. Não apaga uma peça já cadastrada.",
+    rule: "modelo é obrigatório. status vazio vira Disponível. Para apagar, use excluir-estoque com o id.",
   },
   {
     id: "gravar-nota",
@@ -212,5 +264,5 @@ export const API_SEARCH = [
   "q procura um trecho, sem diferenciar maiúsculas.",
   "Para bater com a planilha, leia o pedido pelo número e compare venda, compra, frete e alfândega.",
   "A taxa de pagamento do gateway só entra quando a loja informa um valor positivo. Zero não conta como taxa lançada.",
-  "Uma gravação não substitui valor que já existe. Para corrigir um número já gravado, use a ficha no painel.",
+  "Completar um pedido não substitui valor que já existe. Para trocar status, venda, compra ou rastreio, use corrigir-pedido. Para custo e status de peça, use corrigir-estoque.",
 ];

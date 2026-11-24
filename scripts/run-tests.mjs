@@ -1,6 +1,6 @@
 // Run in one process so restricted local environments do not need to spawn test workers.
 const tests = [
-  "tray-map", "bi-map", "correios-map", "finance", "finance-lucro-real", "order-filters",
+  "tray-map", "bi-map", "correios-map", "finance", "finance-lucro-real", "order-filters", "claude-api",
   "request-user", "accounts", "invoice-parse", "invoice-cost", "operational", "refunds", "taxes", "integracao",
 ];
 

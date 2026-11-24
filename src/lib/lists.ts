@@ -93,6 +93,13 @@ function foldOption(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
+export function listedValue(options: readonly string[], value: unknown) {
+  if (typeof value !== "string") return null;
+  const key = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  if (!key) return null;
+  return options.find((option) => option.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === key) ?? null;
+}
+
 export function canonicalOption(options: readonly string[], value: string | null | undefined) {
   const raw = (value || "").trim();
   if (!raw) return "";

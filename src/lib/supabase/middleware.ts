@@ -53,7 +53,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   const path = request.nextUrl.pathname;
-  const isPublic = path.startsWith("/login") || path.startsWith("/api/tray/sync") || path === '/integracao';
+  const isPublic = path.startsWith("/login") || path.startsWith("/api/tray/sync") || path.startsWith("/api/claude") || path === '/integracao';
 
   if (!actor && !isPublic) {
     const redirectUrl = request.nextUrl.clone();
