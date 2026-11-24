@@ -401,7 +401,7 @@ export default async function HomePage({
                     : "Meta do mês ainda não definida."}
                   {itemSummary.vendasCreditos ? ` NS Créditos ${brl(itemSummary.vendasCreditos)} entram no resultado.` : ""}
                   {` Entram os pedidos com venda lançada, inclusive Aguardando Vindi. Fora da conta: cancelado e aguardando pagamento. Taxa informada em ${withFee} de ${sales}.`}
-                  {" New Store é a sob encomenda. NS Relógios é a pronta entrega, o bloco que o cabeçalho da planilha chama de Loja Nova. Cada pedido entra uma vez. Na planilha, a célula de sob encomenda já soma o bloco de pronta entrega, e o total do cabeçalho soma esse bloco de novo."}
+                  {" Loja nova é a pronta entrega (NS Relógios). Loja antiga é a venda do mês inteiro e já inclui a loja nova. O total soma os dois, como o cabeçalho da planilha. O lucro desconta o custo uma vez."}
                 </p>
               </div>
               <Link className="button secondary" href={`/financeiro?month=${item}`}>
@@ -424,8 +424,8 @@ export default async function HomePage({
               </thead>
               <tbody>
                 <tr>
-                  <td>Soma</td>
-                  <td className="num">{brl(itemSummary.vendas)}</td>
+                  <td>Total (nova + antiga)</td>
+                  <td className="num">{brl(itemSummary.vendasLojas)}</td>
                   <td className="num">{brl(itemSummary.custoTotal)}</td>
                   <td className={`num ${itemSummary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(itemSummary.resultado)}</td>
                   <td className="num">{brl(itemSummary.alfandega)}</td>

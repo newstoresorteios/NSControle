@@ -155,7 +155,7 @@ export default async function FinanceiroPage({
   const summary = monthSummary(orders ?? [], asNumber(goal?.target_amount), selected);
   const slices = financeSlices(orders ?? [], selected);
   const storeLine = slices
-    .filter((slice) => /^\d{6,}$/.test(slice.key))
+    .filter((slice) => slice.key === "loja-nova" || slice.key === "loja-antiga")
     .map((slice) => `${slice.label} ${brl(slice.summary.vendas)}`)
     .join(" · ");
   const lucroReal = estimateLucroReal(orders ?? [], { icmsCreditFactor });
@@ -217,10 +217,10 @@ export default async function FinanceiroPage({
       <section className="grid gap-3 sm:grid-cols-3">
         <article className="card stat stat-sale">
           <p className="kicker">Venda</p>
-          <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.vendas)}</p>
+          <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.vendasLojas)}</p>
           <p className="mt-1 text-sm text-muted">
             {storeLine ? `${storeLine}. ` : ""}
-            Loja, encomenda e créditos entram no total.
+            O total soma a loja nova de novo, como o cabeçalho da planilha.
           </p>
         </article>
         <article className="card stat stat-cost">
@@ -249,7 +249,7 @@ export default async function FinanceiroPage({
         <section className="card overflow-x-auto">
           <h2 className="section-title">Por loja</h2>
           <p className="mt-1 text-sm text-muted">
-            A sob encomenda entra na New Store. Cada coluna soma o mês inteiro, e a linha Soma fecha com os cartões de cima.
+            Loja nova é a pronta entrega (NS Relógios). Loja antiga é a venda do mês inteiro e já inclui a loja nova. O total soma os dois, como o cabeçalho da planilha. Custo e lucro contam cada pedido uma vez.
           </p>
           <table className="mt-3">
             <thead>
@@ -280,8 +280,8 @@ export default async function FinanceiroPage({
                 </tr>
               ))}
               <tr>
-                <td>Soma</td>
-                <td className="num">{brl(summary.vendas)}</td>
+                <td>Total (nova + antiga)</td>
+                <td className="num">{brl(summary.vendasLojas)}</td>
                 <td className="num text-danger">{brl(summary.custoCompra)}</td>
                 <td className="num text-danger">{brl(summary.frete)}</td>
                 <td className="num text-danger">{brl(summary.alfandega)}</td>
@@ -380,7 +380,7 @@ export default async function FinanceiroPage({
           <thead>
             <tr>
               <th>Total de vendas loja nova</th>
-              <th>Total de vendas sob encomenda</th>
+              <th>Total de vendas loja antiga</th>
               <th>Dedução: compra</th>
               <th>Dedução: frete</th>
               <th>Dedução: alfândega</th>
@@ -403,7 +403,7 @@ export default async function FinanceiroPage({
           </tbody>
         </table>
         <p className="mt-3 text-sm text-muted">
-          Compra, frete, alfândega e taxa da máquina entram separados na dedução.
+          Loja nova é a pronta entrega. Loja antiga já inclui essa venda. O resultado desconta compra, frete, alfândega e taxa uma vez sobre a loja antiga.
           {summary.vendasCreditos ? ` NS Créditos ${brl(summary.vendasCreditos)} entram no resultado e ficam fora da meta.` : ""}
         </p>
         {gaps.length ? (
@@ -510,7 +510,7 @@ export default async function FinanceiroPage({
           <table className="mt-3">
             <thead>
               <tr>
-                <th>Total de vendas lojas (nova + encomenda)</th>
+                <th>Total de vendas lojas (nova + antiga)</th>
                 <th>Meta</th>
                 <th>Falta para a meta</th>
                 <th>Percentual concluído</th>

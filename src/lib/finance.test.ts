@@ -144,7 +144,22 @@ test("cenário sintético deduz cada taxa uma vez e mostra devolução no mês r
   assert.equal(summary.resultado, 300);
 });
 
-test("separa as duas lojas e mantém a soma no total", () => {
+test("cabeçalho soma a loja nova de novo sobre a loja antiga", () => {
+  const orders: MoneyOrder[] = [
+    { flow: "loja_nova", order_key: "26736", sale_amount: 930, purchase_amount: 400, payment_fee: null, shipping_cost: null, import_tax: null },
+    { flow: "loja_nova", order_key: "1490060:475", sale_amount: 289, purchase_amount: 100, payment_fee: null, shipping_cost: null, import_tax: null },
+  ];
+  const summary = monthSummary(orders, 1_400, "2026-11", new Date(2026, 10, 10));
+  close(summary.vendasLoja, 289);
+  close(summary.vendasEncomenda, 1_219);
+  close(summary.vendasLojas, 1_508);
+  close(summary.vendas, 1_219);
+  close(summary.resultado, 719);
+  close(summary.percentual, 1_508 / 1_400);
+  close(summary.falta, 1_400 - 1_508);
+});
+
+test("separa loja nova e loja antiga como o cabeçalho da planilha", () => {
   const orders: MoneyOrder[] = [
     { flow: "loja_nova", order_key: "26736", sale_amount: 100, purchase_amount: 40, payment_fee: null, shipping_cost: 10, import_tax: null },
     { flow: "loja_nova", order_key: "1490060:475", sale_amount: 40, purchase_amount: null, payment_fee: null, shipping_cost: 5, import_tax: null },
@@ -152,37 +167,28 @@ test("separa as duas lojas e mantém a soma no total", () => {
     { flow: "encomenda", order_key: "E1", sale_amount: 20, purchase_amount: 8, payment_fee: null, shipping_cost: null, import_tax: null },
   ];
   const slices = financeSlices(orders, "2026-11", new Date(2026, 10, 10));
-  assert.deepEqual(slices.map((slice) => slice.label), ["New Store · sob encomenda", "NS Relógios · pronta entrega"]);
-  close(slices[0].summary.vendas, 120);
-  close(slices[0].summary.custoCompra, 48);
-  close(slices[0].summary.frete, 10);
-  close(slices[0].summary.alfandega, 0);
-  close(slices[1].summary.frete, 5);
-  close(slices[0].summary.custoTotal, 58);
-  close(slices[0].summary.resultado, 62);
-  close(slices[1].summary.vendas, 50);
-  close(slices[1].summary.resultado, 45);
-  assert.equal(slices[1].complete.count, 0);
-  close(slices[0].complete.margem, 62 / 120);
-  close(slices[0].complete.mediaGanhos, 31);
+  assert.deepEqual(slices.map((slice) => slice.label), ["Loja nova", "Loja antiga"]);
+  close(slices[0].summary.vendas, 50);
+  close(slices[0].summary.frete, 5);
+  close(slices[0].summary.resultado, 45);
+  assert.equal(slices[0].complete.count, 0);
+  close(slices[1].summary.vendas, 170);
+  close(slices[1].summary.custoCompra, 48);
+  close(slices[1].summary.frete, 15);
+  close(slices[1].summary.alfandega, 0);
+  close(slices[1].summary.custoTotal, 63);
+  close(slices[1].summary.resultado, 107);
+  close(slices[1].complete.margem, 62 / 120);
+  close(slices[1].complete.mediaGanhos, 31);
   const total = monthSummary(orders, null, "2026-11", new Date(2026, 10, 10));
+  close(total.vendasLoja, 50);
+  close(total.vendasEncomenda, 170);
+  close(total.vendasLojas, 220);
+  close(total.vendas, 170);
   close(total.custoCompra, 48);
   close(total.frete, 15);
-  close(total.alfandega, 0);
   close(
     slices.reduce((sum, slice) => sum + slice.summary.vendas, 0),
-    total.vendas,
-  );
-  close(
-    slices.reduce((sum, slice) => sum + slice.summary.custoCompra, 0),
-    total.custoCompra,
-  );
-  close(
-    slices.reduce((sum, slice) => sum + slice.summary.frete, 0),
-    total.frete,
-  );
-  close(
-    slices.reduce((sum, slice) => sum + slice.summary.resultado, 0),
-    total.resultado,
+    total.vendasLojas,
   );
 });

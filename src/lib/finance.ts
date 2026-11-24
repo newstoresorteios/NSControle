@@ -6,8 +6,6 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
-export const PRIMARY_STORE = "687890";
-
 export type MoneyOrder = {
   flow: string;
   order_key?: string | null;
@@ -77,6 +75,12 @@ export function trayStoreOf(order: { order_key: string; label?: string | null })
   return /^\d+$/.test(order.order_key) ? "687890" : null;
 }
 
+/** Loja nova do cabeçalho: pronta entrega, a loja NS Relógios. */
+export function isSheetLojaNova(order: { order_key?: string | null; label?: string | null; origin?: string | null }): boolean {
+  if ((order.origin ?? "").toLowerCase().includes("pronta entrega")) return true;
+  return trayStoreOf({ order_key: String(order.order_key ?? ""), label: order.label }) === "1490060";
+}
+
 /** Status que a planilha não soma. Aguardando Vindi continua: a venda já está lançada. */
 export const FINANCE_STATUS_OUT = "cancel|aguardando pagamento|aguardando confirm";
 
@@ -107,6 +111,10 @@ export function salesByTrayStore(orders: Array<MoneyOrder & { order_key: string;
   return totals;
 }
 
+function sumSales(orders: MoneyOrder[]) {
+  return orders.reduce((total, order) => total + (asNumber(order.sale_amount) ?? 0), 0);
+}
+
 function sum(orders: MoneyOrder[], flow: string | null, field: keyof MoneyOrder) {
   return orders
     .filter((order) => flow == null || order.flow === flow)
@@ -135,11 +143,12 @@ export function monthSummary(
   month: string,
   today = new Date(),
 ): MonthSummary {
-  const vendasEncomenda = sum(orders, "encomenda", "sale_amount");
-  const vendasLoja = sum(orders, "loja_nova", "sale_amount");
+  const storeOrders = orders.filter((order) => order.flow === "loja_nova" || order.flow === "encomenda");
+  const vendasLoja = sumSales(storeOrders.filter(isSheetLojaNova));
+  const vendasEncomenda = sumSales(storeOrders);
   const vendasCreditos = sum(orders, "ns_creditos", "sale_amount");
-  const vendasLojas = vendasEncomenda + vendasLoja;
-  const vendas = vendasLojas + vendasCreditos;
+  const vendasLojas = vendasLoja + vendasEncomenda;
+  const vendas = vendasEncomenda + vendasCreditos;
   const custoCompra = sum(orders, null, "purchase_amount");
   const frete = sum(orders, null, "shipping_cost");
   const alfandega = sum(orders, null, "import_tax");
@@ -184,15 +193,6 @@ export function monthSummary(
   };
 }
 
-const STORE_LABEL: Record<string, string> = {
-  "687890": "New Store · sob encomenda",
-  "1490060": "NS Relógios · pronta entrega",
-};
-
-function storeLabel(id: string) {
-  return STORE_LABEL[id] ?? id;
-}
-
 export function marginOnComplete(orders: MoneyOrder[]) {
   const complete = orders.filter((order) => asNumber(order.sale_amount) != null && asNumber(order.purchase_amount) != null);
   const vendas = complete.reduce((total, order) => total + (asNumber(order.sale_amount) ?? 0), 0);
@@ -235,11 +235,8 @@ export function financeSlices(
   };
   for (const order of orders) {
     if (order.flow === "loja_nova" || order.flow === "encomenda") {
-      const key = String(order.order_key ?? "");
-      const detected = order.flow === "loja_nova" && key ? trayStoreOf({ order_key: key, label: order.label }) : null;
-      const prefixed = order.flow === "loja_nova" ? /^(\d{6,}):/.exec(key) : null;
-      const store = detected ?? prefixed?.[1] ?? PRIMARY_STORE;
-      put(store, storeLabel(store), order);
+      put("loja-antiga", "Loja antiga", order);
+      if (isSheetLojaNova(order)) put("loja-nova", "Loja nova", order);
       continue;
     }
     put(`flow:${order.flow}`, EXTRA_FLOW[order.flow] ?? order.flow, order);
@@ -253,11 +250,7 @@ export function financeSlices(
       complete: marginOnComplete(bucket.rows),
     }))
     .sort((a, b) => {
-      if (a.key === PRIMARY_STORE) return -1;
-      if (b.key === PRIMARY_STORE) return 1;
-      const aStore = /^\d{6,}$/.test(a.key);
-      const bStore = /^\d{6,}$/.test(b.key);
-      if (aStore !== bStore) return aStore ? -1 : 1;
-      return a.label.localeCompare(b.label, "pt");
+      const rank = (key: string) => (key === "loja-nova" ? 0 : key === "loja-antiga" ? 1 : 2);
+      return rank(a.key) - rank(b.key) || a.label.localeCompare(b.label, "pt");
     });
 }
