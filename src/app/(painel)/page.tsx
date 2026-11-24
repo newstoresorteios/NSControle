@@ -9,54 +9,14 @@ import { asNumber, brl, monthLabel, percent } from "@/lib/format";
 import { trayConfigured } from "@/lib/tray-client";
 
 const PENDENCIAS = [
-  {
-    id: "vindi",
-    label: "A enviar Vindi",
-    hint: "Pagamento ao fornecedor ainda não enviado.",
-    href: "/pedidos?fila=vindi",
-  },
-  {
-    id: "a_enviar",
-    label: "A enviar",
-    hint: "Pedido pronto para envio, fora da fila da Vindi.",
-    href: "/pedidos?fila=a_enviar",
-  },
-  {
-    id: "devolucao",
-    label: "Devolução",
-    hint: "Último evento dos Correios é devolução ao remetente.",
-    href: "/pedidos?fila=devolucao",
-  },
-  {
-    id: "alfandega",
-    label: "Alfândega",
-    hint: "Último evento dos Correios foi lido como fiscalização ou recebimento no Brasil.",
-    href: "/pedidos?fila=alfandega",
-  },
-  {
-    id: "sem_retorno",
-    label: "Sem retorno",
-    hint: "A consulta do rastreio falhou ou o objeto ficou sem movimento.",
-    href: "/pedidos?fila=sem_retorno",
-  },
-  {
-    id: "sem_rastreio",
-    label: "Sem rastreio",
-    hint: "Venda lançada e ainda sem código de rastreio, em qualquer mês.",
-    href: "/pedidos?fila=sem_rastreio",
-  },
-  {
-    id: "sem_rastreio_15",
-    label: "Sem rastreio há 15 dias",
-    hint: "Pagos há mais de 15 dias e ainda sem código.",
-    href: "/?atraso=1#atraso",
-  },
-  {
-    id: "imposto",
-    label: "Imposto em aberto",
-    hint: "Taxa de importação lançada e ainda não confirmada como paga.",
-    href: "/financeiro?aba=taxas",
-  },
+  { id: "vindi", label: "A enviar Vindi", hint: "Pagamento ao fornecedor ainda não enviado." },
+  { id: "a_enviar", label: "A enviar", hint: "Pedido pronto para envio, fora da fila da Vindi." },
+  { id: "devolucao", label: "Devolução", hint: "Último evento dos Correios é devolução ao remetente." },
+  { id: "alfandega", label: "Alfândega", hint: "Último evento dos Correios foi lido como fiscalização ou recebimento no Brasil." },
+  { id: "sem_retorno", label: "Sem retorno", hint: "A consulta do rastreio falhou ou o objeto ficou sem movimento." },
+  { id: "sem_rastreio", label: "Sem rastreio", hint: "Venda lançada e ainda sem código de rastreio." },
+  { id: "sem_rastreio_15", label: "Sem rastreio há 15 dias", hint: "Pagos há mais de 15 dias e ainda sem código." },
+  { id: "imposto", label: "Imposto em aberto", hint: "Taxa de importação lançada e ainda não confirmada como paga." },
 ] as const;
 
 const SYNC_MESSAGE: Record<string, string> = {
@@ -66,6 +26,18 @@ const SYNC_MESSAGE: Record<string, string> = {
   erro: "Não foi possível falar com o TRAYadaptor.",
   nao_configurado: "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN.",
 };
+
+function shiftMonth(month: string, delta: number) {
+  const [year, mon] = month.split("-").map(Number);
+  const date = new Date(Date.UTC(year, mon - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function queueHref(id: string, month: string) {
+  if (id === "sem_rastreio_15") return `/?month=${month}&atraso=1#atraso`;
+  if (id === "imposto") return `/financeiro?month=${month}&aba=taxas`;
+  return `/pedidos?fila=${id}&mes=${month}`;
+}
 
 function saoPauloMonth(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -140,7 +112,7 @@ export default async function HomePage({
   const configured = trayConfigured();
   const month = saoPauloMonth();
   const sql = db();
-  const [syncRows, countRows, macroRows, goalRows, moneyRows] = await Promise.all([
+  const [syncRows, countRows, goalRows, moneyRows] = await Promise.all([
     sql<{ last_run_at: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
       select last_run_at, last_report from ctl_tray_sync
       where id = 'orders'
@@ -167,25 +139,6 @@ export default async function HomePage({
       from ctl_orders
       where finance_month is not null
       group by 1
-    `,
-    sql<{ vindi: number; a_enviar: number; devolucao: number; alfandega: number; sem_retorno: number; sem_rastreio: number; sem_rastreio_15: number; imposto: number }[]>`
-      select
-        count(*) filter (where commercial_status = 'A ENVIAR VINDI')::int as vindi,
-        count(*) filter (where delivered = false and commercial_status = 'A ENVIAR')::int as a_enviar,
-        count(*) filter (where tracking_situation ilike '%DEVOLU%')::int as devolucao,
-        count(*) filter (where tracking_situation ilike '%ALF%')::int as alfandega,
-        count(*) filter (where tracking_situation ilike '%Sem retorno%')::int as sem_retorno,
-        count(*) filter (where delivered = false
-          and nullif(btrim(coalesce(tracking_code, '')), '') is null
-          and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
-          and (sale_amount is not null or payment_date is not null))::int as sem_rastreio,
-        count(*) filter (where delivered = false
-          and sale_amount is not null
-          and nullif(btrim(coalesce(tracking_code, '')), '') is null
-          and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
-          and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15)::int as sem_rastreio_15,
-        count(*) filter (where tax_paid = false and import_tax is not null and coalesce(commercial_status, '') !~* 'cancel')::int as imposto
-      from ctl_orders
     `,
     sql<{ month: string; target_amount: string }[]>`
       select month, target_amount from ctl_monthly_goals
@@ -236,8 +189,10 @@ export default async function HomePage({
   const currentGoal = goalByMonth.get(selected) ?? null;
   const summary = monthSummary(byMonth.get(selected) ?? [], asNumber(currentGoal), selected);
   const tally = tallyByMonth.get(selected);
-  const macro = macroRows[0];
-  const backlog = monthSummary(approved, null, selected);
+  const windowMonths = [-2, -1, 0].map((delta) => shiftMonth(selected, delta));
+  const windowSummaries = new Map(
+    windowMonths.map((item) => [item, monthSummary(byMonth.get(item) ?? [], asNumber(goalByMonth.get(item)), item)]),
+  );
   const [lateRows] = await Promise.all([
     params.atraso === "1"
       ? sql<{
@@ -257,12 +212,12 @@ export default async function HomePage({
             and nullif(btrim(coalesce(tracking_code, '')), '') is null
             and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
             and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
+            and finance_month = ${`${selected}-01`}::date
           order by coalesce(payment_date, purchase_date) asc nulls last
           limit 200
         `
       : Promise.resolve([]),
   ]);
-  const late = macro?.sem_rastreio_15 ?? 0;
   const showLate = params.atraso === "1";
 
   return (
@@ -289,21 +244,17 @@ export default async function HomePage({
 
       <section className="grid gap-3">
         <div>
-          <h2 className="section-title">Pendências do sistema</h2>
-          <p className="mt-1 text-sm text-muted">Total em aberto, de todos os meses. A linha de baixo é só {monthLabel(selected)}.</p>
+          <h2 className="section-title">Pendências de {monthLabel(selected)}</h2>
+          <p className="mt-1 text-sm text-muted">Só o mês do filtro. Os três meses aparecem na tabela de baixo.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {PENDENCIAS.map((item) => {
-            const total = macro?.[item.id] ?? 0;
             const inMonth = tally?.[item.id] ?? 0;
-            const href = item.id === "sem_rastreio_15"
-              ? (showLate ? `/?month=${selected}` : `/?month=${selected}&atraso=1#atraso`)
-              : item.href;
+            const href = item.id === "sem_rastreio_15" && showLate ? `/?month=${selected}` : queueHref(item.id, selected);
             return (
               <Link key={item.id} href={href} className="card stat block">
                 <p className="kicker">{item.label}</p>
-                <p className={`num mt-2 text-4xl font-medium tracking-tight ${total ? "text-danger" : ""}`}>{total}</p>
-                <p className="mt-1 text-sm">{inMonth} em {monthLabel(selected)}</p>
+                <p className={`num mt-2 text-4xl font-medium tracking-tight ${inMonth ? "text-danger" : ""}`}>{inMonth}</p>
                 <p className="mt-1 text-sm text-muted">{item.id === "sem_rastreio_15" && showLate ? "Ocultar a lista" : item.hint}</p>
               </Link>
             );
@@ -312,29 +263,114 @@ export default async function HomePage({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Link href={`/financeiro?month=${selected}&aba=pendencias&falta=compra`} className="card stat block">
             <p className="kicker">Sem preço de compra</p>
-            <p className={`num mt-2 text-4xl font-medium tracking-tight ${backlog.semCompra ? "text-danger" : ""}`}>{backlog.semCompra}</p>
-            <p className="mt-1 text-sm">{summary.semCompra} em {monthLabel(selected)}</p>
+            <p className={`num mt-2 text-4xl font-medium tracking-tight ${summary.semCompra ? "text-danger" : ""}`}>{summary.semCompra}</p>
             <p className="mt-1 text-sm text-muted">Venda lançada e custo de compra ainda em branco.</p>
           </Link>
           <Link href={`/financeiro?month=${selected}&aba=pendencias&falta=alfandega`} className="card stat block">
             <p className="kicker">Sem taxa alfandegária</p>
-            <p className={`num mt-2 text-4xl font-medium tracking-tight ${backlog.semAlfandega ? "text-danger" : ""}`}>{backlog.semAlfandega}</p>
-            <p className="mt-1 text-sm">{summary.semAlfandega} em {monthLabel(selected)}</p>
+            <p className={`num mt-2 text-4xl font-medium tracking-tight ${summary.semAlfandega ? "text-danger" : ""}`}>{summary.semAlfandega}</p>
             <p className="mt-1 text-sm text-muted">Importação que ainda exige o imposto. Pronta entrega fica de fora.</p>
           </Link>
           <Link href={`/financeiro?month=${selected}&aba=pendencias&falta=envio`} className="card stat block">
             <p className="kicker">Sem custo de envio</p>
-            <p className={`num mt-2 text-4xl font-medium tracking-tight ${backlog.semEnvio ? "text-danger" : ""}`}>{backlog.semEnvio}</p>
-            <p className="mt-1 text-sm">{summary.semEnvio} em {monthLabel(selected)}</p>
+            <p className={`num mt-2 text-4xl font-medium tracking-tight ${summary.semEnvio ? "text-danger" : ""}`}>{summary.semEnvio}</p>
             <p className="mt-1 text-sm text-muted">Venda lançada e frete ainda em branco.</p>
           </Link>
           <Link href={`/financeiro?month=${selected}`} className="card stat block">
             <p className="kicker">Sem taxa de pagamento</p>
-            <p className={`num mt-2 text-4xl font-medium tracking-tight ${backlog.semTaxa ? "text-danger" : ""}`}>{backlog.semTaxa}</p>
-            <p className="mt-1 text-sm">{summary.semTaxa} em {monthLabel(selected)}</p>
+            <p className={`num mt-2 text-4xl font-medium tracking-tight ${summary.semTaxa ? "text-danger" : ""}`}>{summary.semTaxa}</p>
             <p className="mt-1 text-sm text-muted">Pedido com venda e tarifa do gateway ainda vazia.</p>
           </Link>
         </div>
+      </section>
+
+      <section className="card overflow-x-auto">
+        <h2 className="section-title">Últimos 3 meses</h2>
+        <p className="mt-1 text-sm text-muted">
+          {windowMonths.map((item) => monthLabel(item)).join(", ")}. A coluna de {monthLabel(selected)} é o mês do filtro.
+        </p>
+        <table className="mt-3">
+          <thead>
+            <tr>
+              <th>Valor</th>
+              {windowMonths.map((item) => (
+                <th key={item} className={item === selected ? "text-ink" : ""}>{monthLabel(item)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(
+              [
+                ["Loja nova", (item: ReturnType<typeof monthSummary>) => brl(item.vendasLoja)],
+                ["Loja antiga", (item: ReturnType<typeof monthSummary>) => brl(item.vendasEncomenda)],
+                ["Total (nova + antiga)", (item: ReturnType<typeof monthSummary>) => brl(item.vendasLojas)],
+                ["Compra", (item: ReturnType<typeof monthSummary>) => brl(item.custoCompra)],
+                ["Frete", (item: ReturnType<typeof monthSummary>) => brl(item.frete)],
+                ["Alfândega", (item: ReturnType<typeof monthSummary>) => brl(item.alfandega)],
+                ["Taxa de pagamento", (item: ReturnType<typeof monthSummary>) => brl(item.taxaMaquina)],
+                ["Custo", (item: ReturnType<typeof monthSummary>) => brl(item.custoTotal)],
+                ["Lucro", (item: ReturnType<typeof monthSummary>) => brl(item.resultado)],
+              ] as const
+            ).map(([label, value]) => (
+              <tr key={label}>
+                <td>{label}</td>
+                {windowMonths.map((item) => (
+                  <td key={item} className={`num ${item === selected ? "font-medium" : ""}`}>
+                    {value(windowSummaries.get(item)!)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <table className="mt-6">
+          <thead>
+            <tr>
+              <th>Pendência</th>
+              {windowMonths.map((item) => (
+                <th key={item}>{monthLabel(item)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {PENDENCIAS.map((item) => (
+              <tr key={item.id}>
+                <td>{item.label}</td>
+                {windowMonths.map((month) => {
+                  const count = tallyByMonth.get(month)?.[item.id] ?? 0;
+                  return (
+                    <td key={month} className={`num ${count ? "text-danger" : ""} ${month === selected ? "font-medium" : ""}`}>
+                      <Link className="underline" href={queueHref(item.id, month)}>{count}</Link>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            {(
+              [
+                ["Sem preço de compra", "semCompra", "compra"],
+                ["Sem taxa alfandegária", "semAlfandega", "alfandega"],
+                ["Sem custo de envio", "semEnvio", "envio"],
+                ["Sem taxa de pagamento", "semTaxa", ""],
+              ] as const
+            ).map(([label, field, falta]) => (
+              <tr key={field}>
+                <td>{label}</td>
+                {windowMonths.map((month) => {
+                  const count = windowSummaries.get(month)?.[field] ?? 0;
+                  const href = falta
+                    ? `/financeiro?month=${month}&aba=pendencias&falta=${falta}`
+                    : `/financeiro?month=${month}`;
+                  return (
+                    <td key={month} className={`num ${count ? "text-danger" : ""} ${month === selected ? "font-medium" : ""}`}>
+                      <Link className="underline" href={href}>{count}</Link>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2">
@@ -357,7 +393,7 @@ export default async function HomePage({
       {showLate ? (
         <section id="atraso" className="card overflow-x-auto">
           <h2 className="section-title">Sem rastreio há 15 dias</h2>
-          <p className="mt-1 text-sm text-muted">Todo o sistema: venda lançada, paga há mais de 15 dias e ainda sem código. A lista mostra os 200 mais antigos.</p>
+          <p className="mt-1 text-sm text-muted">Pedidos de {monthLabel(selected)} pagos há mais de 15 dias e ainda sem código. A lista mostra os 200 mais antigos desse mês.</p>
           <table className="mt-3">
             <thead>
               <tr>
