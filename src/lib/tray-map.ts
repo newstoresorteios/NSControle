@@ -147,6 +147,19 @@ export function needsTrayRefresh(
   return !isSameTrayVersion(existing.tray_modified_at, modified);
 }
 
+export function positiveGatewayFee(value: unknown): number | null {
+  const rate = money(value);
+  return rate != null && rate > 0 ? rate : null;
+}
+
+export function orderNeedsLoad(
+  existing: { tray_modified_at: string | null; origin: string | null; payment_fee?: unknown } | null,
+  listed: { modified?: unknown; payment_method_rate?: unknown },
+): boolean {
+  if (needsTrayRefresh(existing, listed.modified)) return true;
+  return positiveGatewayFee(listed.payment_method_rate) == null && positiveGatewayFee(existing?.payment_fee) == null;
+}
+
 export function normalizeStatus(value: unknown): string | null {
   if (value == null) return null;
   const text = String(value).trim().replace(/\s+/g, " ");
@@ -225,9 +238,7 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
   const shipmentValue = money(shipping.shipment_value);
   const discount = money(order.discount);
   const taxes = money(order.taxes);
-  const rateKnown = Object.prototype.hasOwnProperty.call(payment, "payment_method_rate");
-  const paymentRate = money(payment.payment_method_rate);
-  const paymentFee = !rateKnown ? null : paymentRate != null && paymentRate > 0 ? paymentRate : 0;
+  const paymentFee = positiveGatewayFee(payment.payment_method_rate);
   const records = Array.isArray(payment.records)
     ? payment.records.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     : [];

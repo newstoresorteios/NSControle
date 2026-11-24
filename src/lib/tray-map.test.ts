@@ -7,6 +7,7 @@ import {
   isSameTrayVersion,
   mergeTrayOrder,
   needsTrayRefresh,
+  orderNeedsLoad,
   orderIdFromEvent,
   orderListFilters,
   type StoredOrder,
@@ -87,13 +88,13 @@ test("taxa do meio de pagamento vira tarifa e não substitui valor já lançado"
     order: { ...paid.order, taxes: "18.90" },
     payment: { ...paid.payment, payment_method_rate: "-90.00" },
   });
-  assert.equal(discountOnly?.payment_fee, 0);
+  assert.equal(discountOnly?.payment_fee, null);
   assert.doesNotMatch(discountOnly?.notes_tray ?? "", /tarifa/);
   const checked = buildTrayDraft({
     ...paid,
     payment: { ...paid.payment, payment_method_rate: null },
   });
-  assert.equal(checked?.payment_fee, 0);
+  assert.equal(checked?.payment_fee, null);
   const kept = mergeTrayOrder(
     {
       id: "abc",
@@ -205,6 +206,21 @@ test("atualização da loja não apaga custo nem origem já preenchidos", () => 
   assert.equal(merged.row.commercial_status, "A ENVIAR");
   assert.equal(merged.row.product_name, "Relógio");
   assert.equal(merged.row.purchase_date, undefined);
+});
+
+test("a carga relê pedido sem tarifa positiva do gateway", () => {
+  const stored = { tray_modified_at: "2026-11-20T12:00:00.000Z", origin: "Tray", payment_fee: 0 };
+  assert.equal(orderNeedsLoad(stored, { modified: "2026-11-20T12:00:00.000Z", payment_method_rate: "0.00" }), true);
+  assert.equal(orderNeedsLoad(stored, { modified: "2026-11-20T12:00:00.000Z" }), true);
+  assert.equal(orderNeedsLoad(stored, { modified: "2026-11-20T12:00:00.000Z", payment_method_rate: "30.52" }), false);
+  assert.equal(
+    orderNeedsLoad(
+      { ...stored, payment_fee: 30.52 },
+      { modified: "2026-11-20T12:00:00.000Z" },
+    ),
+    false,
+  );
+  assert.equal(orderNeedsLoad(stored, { modified: "2026-11-21T12:00:00.000Z", payment_method_rate: "30.52" }), true);
 });
 
 test("sincronização preserva produto, referência, pagamento e rastreio preenchidos manualmente", () => {

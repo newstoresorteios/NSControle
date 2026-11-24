@@ -7,8 +7,9 @@ import {
   buildTrayDraft,
   cancellationFromTray,
   mergeTrayOrder,
-  needsTrayRefresh,
+  orderNeedsLoad,
   orderIdFromEvent,
+  positiveGatewayFee,
   orderKey,
   orderListFilters,
   saoPauloToday,
@@ -47,6 +48,7 @@ type SyncState = {
   last_event_id: number;
   last_run_at: string | null;
   last_status: string | null;
+  fee_cursor: string | null;
 };
 
 type Progress = {
@@ -63,6 +65,7 @@ type Progress = {
   feesChecked: number;
   feesFilled: number;
   feesPending: number;
+  feeCursor: string | null;
 };
 
 function empty(reason: string, ok: boolean): SyncReport {
@@ -116,7 +119,14 @@ async function readState(): Promise<SyncState> {
     last_event_id: Number(data?.last_event_id) || 0,
     last_run_at: data?.last_run_at ? String(data.last_run_at) : null,
     last_status: data?.last_status ? String(data.last_status) : null,
+    fee_cursor: feeCursorOf(data?.last_report),
   };
+}
+
+function feeCursorOf(report: unknown): string | null {
+  if (!report || typeof report !== "object") return null;
+  const value = (report as { fee_cursor?: unknown }).fee_cursor;
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 async function claim(force: boolean): Promise<SyncState | null> {
@@ -146,6 +156,7 @@ async function finish(status: string, error: string | null, progress: Progress) 
     fees_checked: progress.feesChecked,
     fees_filled: progress.feesFilled,
     fees_pending: progress.feesPending,
+    fee_cursor: progress.feeCursor,
   };
   await db()`
     update ctl_tray_sync set
@@ -283,32 +294,40 @@ async function pullOne(key: string, listedModified: unknown) {
 
 const FEE_SYNC_LIMIT = 10;
 
-async function missingFeeKeys(limit: number) {
-  return db()<{ order_key: string }[]>`
+async function missingFeeKeys(limit: number, cursor: string | null) {
+  const load = (after: string | null, size: number) => db()<{ order_key: string }[]>`
     select order_key
     from (
-      select distinct on (order_key) order_key, finance_month, payment_date
+      select distinct on (order_key) order_key
       from ctl_orders
-      where payment_fee is null
+      where (payment_fee is null or payment_fee = 0)
         and order_key ~ '^[0-9]+(:[0-9]+)?$'
+        and (${after}::text is null or order_key > ${after})
         and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
         and (
           data_source is distinct from 'tray'
           or sale_amount is not null
           or payment_date is not null
         )
-      order by order_key, finance_month desc nulls last, payment_date desc nulls last
+      order by order_key
     ) missing
-    order by finance_month desc nulls last, payment_date desc nulls last
-    limit ${limit}
+    order by order_key
+    limit ${size}
   `;
+  let rows: { order_key: string }[] = await load(cursor, limit);
+  if (cursor && rows.length < limit) {
+    const seen = new Set(rows.map((row) => row.order_key));
+    const rest = await load(null, limit - rows.length);
+    rows = rows.concat(rest.filter((row) => !seen.has(row.order_key)));
+  }
+  return rows;
 }
 
 async function countMissingFees() {
   const rows = await db()<{ total: number }[]>`
     select count(distinct order_key)::int as total
     from ctl_orders
-    where payment_fee is null
+    where (payment_fee is null or payment_fee = 0)
       and order_key ~ '^[0-9]+(:[0-9]+)?$'
       and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
       and (
@@ -320,8 +339,8 @@ async function countMissingFees() {
   return rows[0]?.total ?? 0;
 }
 
-async function refreshMissingFees(limit: number) {
-  const rows = await missingFeeKeys(limit);
+async function refreshMissingFees(limit: number, cursor: string | null) {
+  const rows = await missingFeeKeys(limit, cursor);
   let filled = 0;
   let checked = 0;
   let failures = 0;
@@ -337,7 +356,13 @@ async function refreshMissingFees(limit: number) {
       failures += 1;
     }
   }
-  return { checked, filled, failures, pending: await countMissingFees() };
+  return {
+    checked,
+    filled,
+    failures,
+    pending: await countMissingFees(),
+    cursor: rows.length ? rows[rows.length - 1].order_key : null,
+  };
 }
 
 async function take(progress: Progress, seen: Set<string>, key: string, modified: unknown) {
@@ -371,13 +396,14 @@ async function execute(state: SyncState, progress: Progress, today: string) {
   progress.upserted += fees.count;
   progress.upserted += filled.count;
 
-  const feePass = await refreshMissingFees(Math.min(FEE_SYNC_LIMIT, BATCH));
+  const feePass = await refreshMissingFees(Math.min(FEE_SYNC_LIMIT, BATCH), progress.feeCursor);
   progress.fetched += feePass.checked;
   progress.upserted += feePass.checked - feePass.failures;
   progress.failures += feePass.failures;
   progress.feesChecked = feePass.checked;
   progress.feesFilled = feePass.filled;
   progress.feesPending = feePass.pending;
+  progress.feeCursor = feePass.cursor;
 
   const seen = new Set<string>();
   let events: Array<Record<string, unknown>> = [];
@@ -426,7 +452,13 @@ async function execute(state: SyncState, progress: Progress, today: string) {
       const key = orderKey(order.id);
       if (!key || seen.has(key)) continue;
       const storedOrder = await findOrder(key);
-      if (!needsTrayRefresh(storedOrder, order.modified)) {
+      const listedFee = positiveGatewayFee(order.payment_method_rate);
+      if (storedOrder && listedFee != null && positiveGatewayFee(storedOrder.payment_fee) == null) {
+        await saveOrder(storedOrder.id, { payment_fee: listedFee });
+        storedOrder.payment_fee = listedFee;
+        progress.feesFilled += 1;
+      }
+      if (!orderNeedsLoad(storedOrder, { modified: order.modified, payment_method_rate: order.payment_method_rate })) {
         progress.skipped += 1;
         continue;
       }
@@ -490,6 +522,7 @@ export async function runTraySync(options?: { force?: boolean }): Promise<SyncRe
     feesChecked: 0,
     feesFilled: 0,
     feesPending: 0,
+    feeCursor: state.fee_cursor,
   };
 
   try {
@@ -529,15 +562,17 @@ export async function runPaymentFeeRefresh(options?: { force?: boolean }): Promi
     feesChecked: 0,
     feesFilled: 0,
     feesPending: 0,
+    feeCursor: state.fee_cursor,
   };
   try {
-    const feePass = await refreshMissingFees(BATCH);
+    const feePass = await refreshMissingFees(BATCH, state.fee_cursor);
     progress.fetched = feePass.checked;
     progress.upserted = feePass.checked - feePass.failures;
     progress.failures = feePass.failures;
     progress.feesChecked = feePass.checked;
     progress.feesFilled = feePass.filled;
     progress.feesPending = feePass.pending;
+    progress.feeCursor = feePass.cursor;
     await finish("ok", null, progress);
     revalidatePath("/");
     revalidatePath("/pedidos");
