@@ -1,65 +1,57 @@
 import { requireTeam } from "@/lib/auth";
-import { claudeConfigured } from "@/lib/claude-api";
-
-const CALLS = [
-  {
-    method: "GET",
-    path: "/api/claude?recurso=pedidos&mes=2026-11",
-    text: "Lista os pedidos aprovados do mês, com venda, compra, taxa de pagamento, frete, alfândega e rastreio.",
-  },
-  {
-    method: "GET",
-    path: "/api/claude?recurso=financeiro&mes=2026-11",
-    text: "Totais do mês e a divisão por loja: venda, compra, frete, alfândega, taxa de pagamento e lucro.",
-  },
-  {
-    method: "GET",
-    path: "/api/claude?recurso=sem-rastreio",
-    text: "Pedidos aprovados há mais de 15 dias que ainda não têm código de rastreio.",
-  },
-  {
-    method: "POST",
-    path: "/api/claude",
-    text: "Preenche só o que está em branco: taxa de pagamento, compra, alfândega, frete, rastreio, origem e observação.",
-  },
-];
+import { API_CALLS, API_SEARCH } from "@/lib/api-catalog";
 
 export default async function ApisPage() {
   await requireTeam();
-  const ready = claudeConfigured();
+  const groups = ["Consultar", "Gravar"] as const;
   return (
     <div className="grid gap-5">
       <div>
-        <h1 className="page-title">APIs para o Claude</h1>
+        <h1 className="page-title">APIs</h1>
         <p className="max-w-3xl text-sm text-muted">
-          Cada chamada usa o cabeçalho Authorization: Bearer e o valor de CLAUDE_API_TOKEN.
-          Um campo que já tem valor na ficha permanece. O lucro é calculado pela ficha e não é gravado por aqui.
+          Manual para consultar o sistema, comparar com a planilha e lançar o que ainda está vazio:
+          pedido, taxa de pagamento, estoque, nota de intermediação e a leitura dos pagamentos.
+          A base é o endereço deste painel. Uma chamada de fora do navegador envia
+          <span className="font-mono"> Authorization: Bearer </span>
+          com o token de acesso do servidor.
         </p>
       </div>
-      <p className={ready ? "text-sm text-ok" : "text-sm text-danger"}>
-        {ready ? "O token da API está configurado neste ambiente." : "Falta CLAUDE_API_TOKEN neste ambiente. A API responde indisponível até o token existir."}
-      </p>
-      <section className="grid gap-3">
-        {CALLS.map((call) => (
-          <article key={call.path} className="card">
-            <p className="kicker">{call.method}</p>
-            <p className="mt-2 font-mono text-sm">{call.path}</p>
-            <p className="mt-2 text-sm text-muted">{call.text}</p>
-          </article>
-        ))}
-      </section>
       <section className="card">
-        <h2 className="section-title">Exemplo para gravar a taxa de pagamento</h2>
-        <pre className="mt-3 overflow-x-auto text-sm">{`{
-  "pedido": "26194",
-  "taxa_pagamento": 18.9,
-  "compra": 8010,
-  "alfandega": 46.74,
-  "frete": 49.14,
-  "rastreio": "AB123456789BR",
-  "origem": "Europa"
-}`}</pre>
+        <h2 className="section-title">Como pesquisar</h2>
+        <ul className="mt-3 grid gap-2 text-sm">
+          {API_SEARCH.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
       </section>
+      {groups.map((group) => (
+        <section key={group} className="grid gap-3">
+          <h2 className="section-title">{group}</h2>
+          {API_CALLS.filter((call) => call.group === group).map((call) => (
+            <article key={call.id} className="card grid gap-3">
+              <div>
+                <p className="kicker">{call.method}</p>
+                <h3 className="mt-2 text-base font-medium">{call.title}</h3>
+                <p className="mt-1 font-mono text-sm">{call.path}</p>
+                <p className="mt-2 text-sm text-muted">{call.use}</p>
+              </div>
+              {call.params.length ? (
+                <dl className="grid gap-2 text-sm">
+                  {call.params.map((field) => (
+                    <div key={field.name} className="grid gap-1 sm:grid-cols-[9rem_1fr]">
+                      <dt className="font-mono">{field.name}</dt>
+                      <dd className="text-muted">{field.text}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {call.body ? <pre className="overflow-x-auto text-sm">{call.body}</pre> : null}
+              <p className="text-sm">Devolve: {call.returns}</p>
+              <p className="text-sm text-muted">{call.rule}</p>
+            </article>
+          ))}
+        </section>
+      ))}
     </div>
   );
 }
