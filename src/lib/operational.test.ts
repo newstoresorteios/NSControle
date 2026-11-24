@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calendarDate, nonnegativeMoney, panelPath, pathWith, validUuid } from "./operational.ts";
+import { calendarDate, nonnegativeMoney, oneCopy, panelPath, pathWith, validUuid } from "./operational.ts";
 
 test("calendarDate rejects impossible dates and accepts leap day", () => {
   assert.equal(calendarDate("2024-02-29"), "2024-02-29");
@@ -22,6 +22,13 @@ test("panelPath stays inside the chosen screen", () => {
   assert.equal(panelPath("https://exemplo.test/estoque", "/estoque", "/estoque"), "/estoque");
   assert.equal(panelPath("//estoque", "/estoque", "/estoque"), "/estoque");
   assert.equal(pathWith("/pedidos?aba=pedidos", "ok", "excluido"), "/pedidos?aba=pedidos&ok=excluido");
+});
+
+test("oneCopy keeps a single secret when the same value was pasted repeatedly", () => {
+  assert.equal(oneCopy("segredo1"), "segredo1");
+  assert.equal(oneCopy("segredo1 segredo1 segredo1"), "segredo1");
+  assert.equal(oneCopy("segredo1segredo1segredo1"), "segredo1");
+  assert.equal(oneCopy("um dois"), "um dois");
 });
 
 test("validUuid requires a complete UUID", () => {

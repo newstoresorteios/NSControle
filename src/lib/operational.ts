@@ -15,6 +15,20 @@ export function validUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
+export function oneCopy(value: string) {
+  const trimmed = value.trim();
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length > 1 && parts.every((part) => part === parts[0])) return parts[0];
+  if (parts.length !== 1) return trimmed;
+  const token = parts[0];
+  for (let size = 8; size <= Math.floor(token.length / 2); size += 1) {
+    if (token.length % size !== 0) continue;
+    const chunk = token.slice(0, size);
+    if (chunk.repeat(token.length / size) === token) return chunk;
+  }
+  return token;
+}
+
 export function calendarDate(value: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const [year, month, day] = value.split("-").map(Number);

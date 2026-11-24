@@ -1,10 +1,11 @@
 import { requireTeam } from "@/lib/auth";
 import { API_CALLS, API_SEARCH } from "@/lib/api-catalog";
+import { oneCopy } from "@/lib/operational";
 
 export default async function ApisPage() {
   await requireTeam();
   const groups = ["Consultar", "Gravar"] as const;
-  const token = (process.env.CLAUDE_API_TOKEN || "").trim();
+  const token = oneCopy(process.env.CLAUDE_API_TOKEN || "");
   return (
     <div className="grid gap-5">
       <div>
@@ -21,7 +22,7 @@ export default async function ApisPage() {
         <h2 className="section-title">Senha de acesso</h2>
         <p className="mt-2 text-sm text-muted">Variável CLAUDE_API_TOKEN no servidor deste painel, na Vercel.</p>
         {token ? (
-          <p className="mt-3 break-all font-mono text-sm">{token}</p>
+          <p className="mt-3 overflow-x-auto whitespace-nowrap font-mono text-sm">{token}</p>
         ) : (
           <p className="mt-3 text-sm">A senha ainda não está configurada neste servidor.</p>
         )}

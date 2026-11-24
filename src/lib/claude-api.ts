@@ -6,15 +6,15 @@ import { API_CALLS } from "@/lib/api-catalog";
 import { FINANCE_STATUS_OUT, financeSlices, monthSummary } from "@/lib/finance";
 import { asNumber } from "@/lib/format";
 import { COMMERCIAL_STATUSES, INVENTORY_STATUSES, listedValue } from "@/lib/lists";
-import { validUuid } from "@/lib/operational";
+import { oneCopy, validUuid } from "@/lib/operational";
 import { USER_EMAIL_HEADER, USER_ID_HEADER, requestUser } from "@/lib/request-user";
 
 export function claudeConfigured() {
-  return Boolean((process.env.CLAUDE_API_TOKEN || "").trim());
+  return Boolean(oneCopy(process.env.CLAUDE_API_TOKEN || ""));
 }
 
 export function claudeAuthorized(request: Request) {
-  const expected = (process.env.CLAUDE_API_TOKEN || "").trim();
+  const expected = oneCopy(process.env.CLAUDE_API_TOKEN || "");
   const header = request.headers.get("authorization") || "";
   const supplied = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
   if (!expected || !supplied || supplied.length !== expected.length) return false;
