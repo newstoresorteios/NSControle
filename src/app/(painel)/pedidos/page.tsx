@@ -4,6 +4,7 @@ import { OrderSheet, type SheetMode, type SheetOrder } from "@/components/order-
 import { PageSizeSelect } from "@/components/page-size-select";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { FINANCE_STATUS_OUT } from "@/lib/finance";
 import { brl, monthLabel } from "@/lib/format";
 import { ACCENTS, PLAIN, idPresence, likePattern, orderDigits } from "@/lib/order-filters";
 import { needsAna } from "@/lib/order-rules";
@@ -70,13 +71,15 @@ export default async function PedidosPage({
   const textSearch = Boolean(numero || nome || idref || legacy);
   const loja = params.loja === "ns" || params.loja === "newstore" ? params.loja : "";
   const monthParam = (params.mes || "").trim();
-  const month = monthParam === "todos" || textSearch || params.fila
+  const month = monthParam === "todos" || textSearch
     ? ""
     : /^\d{4}-\d{2}$/.test(monthParam)
       ? monthParam
-      : aba === "pedidos"
-        ? saoPauloMonth()
-        : "";
+      : params.fila
+        ? ""
+        : aba === "pedidos"
+          ? saoPauloMonth()
+          : "";
   await requireTeam();
   const archive = aba === "entregues" && !textSearch;
   const sql = db();
@@ -479,7 +482,7 @@ function abaClause(sql: SqlTag, filters: SheetFilters) {
 
 function approvedClause(sql: SqlTag, filters: SheetFilters) {
   if (filters.aba !== "pedidos" || filters.textSearch) return sql``;
-  return sql`and coalesce(commercial_status, '') !~* 'aguard|cancel'
+  return sql`and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
     and (data_source is distinct from 'tray' or sale_amount is not null or payment_date is not null)`;
 }
 

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db";
-import { financeSlices, monthSummary } from "@/lib/finance";
+import { FINANCE_STATUS_OUT, financeSlices, monthSummary } from "@/lib/finance";
 import { asNumber } from "@/lib/format";
 
 export function claudeConfigured() {
@@ -36,7 +36,7 @@ const LATE = `
   delivered = false
   and sale_amount is not null
   and nullif(btrim(coalesce(tracking_code, '')), '') is null
-  and coalesce(commercial_status, '') !~* 'aguard|cancel'
+  and coalesce(commercial_status, '') !~* '${FINANCE_STATUS_OUT}'
   and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
 `;
 
@@ -65,7 +65,7 @@ export async function claudeGet(url: URL) {
       select flow, order_key, label, origin, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax
       from ctl_orders
       where finance_month = ${`${month}-01`}
-        and coalesce(commercial_status, '') !~* 'aguard|cancel'
+        and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
         and (
           data_source is distinct from 'tray'
           or sale_amount is not null
@@ -116,7 +116,7 @@ export async function claudeGet(url: URL) {
       select order_key, label, origin, product_name, commercial_status, sale_amount, purchase_amount,
         payment_fee, shipping_cost, import_tax, tracking_code, payment_date, purchased
       from ctl_orders
-      where coalesce(commercial_status, '') !~* 'aguard|cancel'
+      where coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
         and (data_source is distinct from 'tray' or sale_amount is not null or payment_date is not null)
         and (
           finance_month = ${start}

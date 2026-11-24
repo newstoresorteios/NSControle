@@ -17,6 +17,7 @@ import {
   type TrayComplete,
   type TrayDraft,
 } from "@/lib/tray-map";
+import { FINANCE_STATUS_OUT } from "@/lib/finance";
 
 const BATCH = 15;
 const MAX_LIST_PAGES = 4;
@@ -290,7 +291,7 @@ async function missingFeeKeys(limit: number) {
       from ctl_orders
       where payment_fee is null
         and order_key ~ '^[0-9]+(:[0-9]+)?$'
-        and coalesce(commercial_status, '') !~* 'aguard|cancel'
+        and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
         and (
           data_source is distinct from 'tray'
           or sale_amount is not null
@@ -309,7 +310,7 @@ async function countMissingFees() {
     from ctl_orders
     where payment_fee is null
       and order_key ~ '^[0-9]+(:[0-9]+)?$'
-      and coalesce(commercial_status, '') !~* 'aguard|cancel'
+      and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
       and (
         data_source is distinct from 'tray'
         or sale_amount is not null

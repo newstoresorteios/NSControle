@@ -21,7 +21,7 @@ test("a conta fica só com pedido aprovado", () => {
   assert.equal(approvedFinanceOrder({ commercial_status: null, data_source: "tray", sale_amount: 10, payment_date: "2026-11-01" }), true);
   assert.equal(approvedFinanceOrder({ commercial_status: "CANCELADO", data_source: "tray", sale_amount: 10, payment_date: "2026-11-01" }), false);
   assert.equal(approvedFinanceOrder({ commercial_status: "AGUARDANDO PAGAMENTO", data_source: "tray", sale_amount: null, payment_date: null }), false);
-  assert.equal(approvedFinanceOrder({ commercial_status: "AGUARDANDO VINDI", data_source: "planilha", sale_amount: 10, payment_date: "2026-11-01" }), false);
+  assert.equal(approvedFinanceOrder({ commercial_status: "AGUARDANDO VINDI", data_source: "planilha", sale_amount: 10, payment_date: "2026-11-01" }), true);
   assert.equal(approvedFinanceOrder({ commercial_status: "A ENVIAR", data_source: "tray", sale_amount: null, payment_date: null }), false);
   assert.equal(approvedFinanceOrder({ commercial_status: null, data_source: "planilha", sale_amount: 10, payment_date: null }), true);
 });
@@ -152,7 +152,7 @@ test("separa as duas lojas e mantém a soma no total", () => {
     { flow: "encomenda", order_key: "E1", sale_amount: 20, purchase_amount: 8, payment_fee: null, shipping_cost: null, import_tax: null },
   ];
   const slices = financeSlices(orders, "2026-11", new Date(2026, 10, 10));
-  assert.deepEqual(slices.map((slice) => slice.label), ["New Store", "NS Relógios"]);
+  assert.deepEqual(slices.map((slice) => slice.label), ["New Store · sob encomenda", "NS Relógios · pronta entrega"]);
   close(slices[0].summary.vendas, 120);
   close(slices[0].summary.custoCompra, 48);
   close(slices[0].summary.frete, 10);

@@ -4,15 +4,31 @@ import { MonthSelect } from "@/components/month-select";
 import { SyncButton, SyncStatus } from "@/components/sync-button";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { approvedFinanceOrder, financeSlices, monthSummary, type MoneyOrder } from "@/lib/finance";
+import { approvedFinanceOrder, FINANCE_STATUS_OUT, financeSlices, monthSummary, type MoneyOrder } from "@/lib/finance";
 import { asNumber, brl, monthLabel, percent } from "@/lib/format";
 import { trayConfigured } from "@/lib/tray-client";
 
 const QUEUES = [
-  { id: "vindi", label: "A enviar Vindi", hint: "pagamento ainda não enviado" },
-  { id: "devolucao", label: "Devolução", hint: "objeto voltando ou já devolvido" },
-  { id: "alfandega", label: "Alfândega", hint: "parado em fiscalização" },
-  { id: "sem_retorno", label: "Sem retorno", hint: "rastreio sem atualização" },
+  {
+    id: "vindi",
+    label: "A enviar Vindi",
+    hint: "Venda do mês já lançada, com status A enviar Vindi: o pagamento ao fornecedor ainda não foi enviado.",
+  },
+  {
+    id: "devolucao",
+    label: "Devolução",
+    hint: "Pedidos do mês cujo último evento dos Correios é devolução ao remetente.",
+  },
+  {
+    id: "alfandega",
+    label: "Alfândega",
+    hint: "Pedidos do mês cujo último evento dos Correios foi lido como fiscalização ou recebimento no Brasil.",
+  },
+  {
+    id: "sem_retorno",
+    label: "Sem retorno",
+    hint: "Pedidos do mês em que a consulta do rastreio falhou ou o objeto ficou sem movimento. É a leitura do Correios, separada da fila de 15 dias.",
+  },
 ] as const;
 
 const SYNC_MESSAGE: Record<string, string> = {
@@ -96,19 +112,22 @@ export default async function HomePage({
   const configured = trayConfigured();
   const month = saoPauloMonth();
   const sql = db();
-  const [syncRows, countRows, goalRows, moneyRows, lateCountRows, lateRows] = await Promise.all([
+  const [syncRows, countRows, goalRows, moneyRows] = await Promise.all([
     sql<{ last_run_at: string | null; last_report: { upserted?: number; cancellations?: number } | null }[]>`
       select last_run_at, last_report from ctl_tray_sync
       where id = 'orders'
       limit 1
     `,
-    sql<{ vindi: number; devolucao: number; alfandega: number; sem_retorno: number }[]>`
+    sql<{ month: string; vindi: number; devolucao: number; alfandega: number; sem_retorno: number }[]>`
       select
+        to_char(finance_month, 'YYYY-MM') as month,
         count(*) filter (where commercial_status = 'A ENVIAR VINDI')::int as vindi,
         count(*) filter (where tracking_situation ilike '%DEVOLU%')::int as devolucao,
         count(*) filter (where tracking_situation ilike '%ALF%')::int as alfandega,
         count(*) filter (where tracking_situation ilike '%Sem retorno%')::int as sem_retorno
       from ctl_orders
+      where finance_month is not null
+      group by 1
     `,
     sql<{ month: string; target_amount: string }[]>`
       select month, target_amount from ctl_monthly_goals
@@ -133,25 +152,44 @@ export default async function HomePage({
         sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax
       from ctl_orders
       where finance_month is not null
-        and coalesce(commercial_status, '') !~* 'aguard|cancel'
+        and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
         and (
           data_source is distinct from 'tray'
           or sale_amount is not null
           or payment_date is not null
         )
     `,
+  ]);
+  const tallyByMonth = new Map(countRows.map((row) => [row.month, row]));
+  const sync = syncRows[0] ?? null;
+  const trayResult = trayNotice(params.sync, params.pedidos);
+  const approved = (moneyRows ?? []).filter((row) => approvedFinanceOrder(row));
+  const byMonth = new Map<string, MoneyOrder[]>();
+  for (const row of approved) {
+    const key = String(row.finance_month).slice(0, 7);
+    const bucket = byMonth.get(key);
+    if (bucket) bucket.push(row);
+    else byMonth.set(key, [row]);
+  }
+  const months = [...byMonth.keys()].sort((left, right) => right.localeCompare(left));
+  if (!months.includes(month)) months.unshift(month);
+  const selected = (params.month && months.includes(params.month) ? params.month : months[0]) ?? month;
+  const goalByMonth = new Map(goalRows.map((goal) => [String(goal.month).slice(0, 7), goal.target_amount]));
+  const currentGoal = goalByMonth.get(selected) ?? null;
+  const summary = monthSummary(byMonth.get(selected) ?? [], asNumber(currentGoal), selected);
+  const tally = tallyByMonth.get(selected);
+  const counts = QUEUES.map((queue) => tally?.[queue.id] ?? 0);
+  const monthStart = `${selected}-01`;
+  const [lateCountRows, lateRows] = await Promise.all([
     sql<{ total: number }[]>`
       select count(*)::int as total
       from ctl_orders
       where delivered = false
         and sale_amount is not null
         and nullif(btrim(coalesce(tracking_code, '')), '') is null
-        and coalesce(commercial_status, '') !~* 'aguard|cancel'
+        and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
+        and finance_month = ${monthStart}
         and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
-        and (
-          finance_month >= date '2026-09-01'
-          or coalesce(commercial_status, '') ~* 'enviar|enviado|pendente|monitor'
-        )
     `,
     params.atraso === "1"
       ? sql<{
@@ -169,35 +207,14 @@ export default async function HomePage({
           where delivered = false
             and sale_amount is not null
             and nullif(btrim(coalesce(tracking_code, '')), '') is null
-            and coalesce(commercial_status, '') !~* 'aguard|cancel'
+            and coalesce(commercial_status, '') !~* ${FINANCE_STATUS_OUT}
+            and finance_month = ${monthStart}
             and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
-            and (
-              finance_month >= date '2026-09-01'
-              or coalesce(commercial_status, '') ~* 'enviar|enviado|pendente|monitor'
-            )
           order by coalesce(payment_date, purchase_date) asc nulls last
           limit 200
         `
       : Promise.resolve([]),
   ]);
-  const tally = countRows[0];
-  const counts = QUEUES.map((queue) => tally?.[queue.id] ?? 0);
-  const sync = syncRows[0] ?? null;
-  const trayResult = trayNotice(params.sync, params.pedidos);
-  const approved = (moneyRows ?? []).filter((row) => approvedFinanceOrder(row));
-  const byMonth = new Map<string, MoneyOrder[]>();
-  for (const row of approved) {
-    const key = String(row.finance_month).slice(0, 7);
-    const bucket = byMonth.get(key);
-    if (bucket) bucket.push(row);
-    else byMonth.set(key, [row]);
-  }
-  const months = [...byMonth.keys()].sort((left, right) => right.localeCompare(left));
-  if (!months.includes(month)) months.unshift(month);
-  const selected = (params.month && months.includes(params.month) ? params.month : months[0]) ?? month;
-  const goalByMonth = new Map(goalRows.map((goal) => [String(goal.month).slice(0, 7), goal.target_amount]));
-  const currentGoal = goalByMonth.get(selected) ?? null;
-  const summary = monthSummary(byMonth.get(selected) ?? [], asNumber(currentGoal), selected);
   const late = lateCountRows[0]?.total ?? 0;
   const showLate = params.atraso === "1";
 
@@ -227,7 +244,7 @@ export default async function HomePage({
         <h2 className="section-title">O que fazer agora</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {QUEUES.map((queue, index) => (
-            <Link key={queue.id} href={`/pedidos?fila=${queue.id}`} className="card stat block">
+            <Link key={queue.id} href={`/pedidos?fila=${queue.id}&mes=${selected}`} className="card stat block">
               <p className="kicker">{queue.label}</p>
               <p className="num mt-2 text-4xl font-medium tracking-tight">{counts[index]}</p>
               <p className="mt-1 text-sm text-muted">{queue.hint}</p>
@@ -254,14 +271,15 @@ export default async function HomePage({
         <Link href={showLate ? `/?month=${selected}` : `/?month=${selected}&atraso=1#atraso`} className="card stat block">
           <p className="kicker">Sem rastreio há 15 dias</p>
           <p className={`num mt-2 text-3xl font-medium tracking-tight ${late ? "text-danger" : ""}`}>{late}</p>
-          <p className="mt-1 text-sm text-muted">{late ? (showLate ? "Ocultar a lista" : "Ver os pedidos") : "Nada em aberto"}</p>
+          <p className="mt-1 text-sm text-muted">Venda deste mês já lançada, paga há mais de 15 dias e ainda sem código de rastreio.</p>
+          <p className="mt-1 text-sm text-muted">{late ? (showLate ? "Ocultar a lista" : "Ver os pedidos") : "Nada em aberto neste mês."}</p>
         </Link>
       </section>
 
       {showLate ? (
         <section id="atraso" className="card overflow-x-auto">
           <h2 className="section-title">Pedidos aprovados sem código de rastreio</h2>
-          <p className="mt-1 text-sm text-muted">Pagos há mais de 15 dias e ainda sem código. A fila olha de setembro de 2026 para cá; venda antiga da loja sem rastreio não entra aqui.</p>
+          <p className="mt-1 text-sm text-muted">Pedidos de {monthLabel(selected)} com venda lançada, pagos há mais de 15 dias e ainda sem código de rastreio.</p>
           <table className="mt-3">
             <thead>
               <tr>
@@ -304,7 +322,8 @@ export default async function HomePage({
                     ? `${percent(itemSummary.percentual)} da meta de ${brl(goal)}.`
                     : "Meta do mês ainda não definida."}
                   {itemSummary.vendasCreditos ? ` NS Créditos ${brl(itemSummary.vendasCreditos)} entram no resultado.` : ""}
-                  {` Só pedidos aprovados. Taxa informada em ${withFee} de ${sales}.`}
+                  {` Entram os pedidos com venda lançada, inclusive Aguardando Vindi. Fora da conta: cancelado e aguardando pagamento. Taxa informada em ${withFee} de ${sales}.`}
+                  {" New Store é a sob encomenda. NS Relógios é a pronta entrega, o bloco que o cabeçalho da planilha chama de Loja Nova. Cada pedido entra uma vez. Na planilha, a célula de sob encomenda já soma o bloco de pronta entrega, e o total do cabeçalho soma esse bloco de novo."}
                 </p>
               </div>
               <Link className="button secondary" href={`/financeiro?month=${item}`}>

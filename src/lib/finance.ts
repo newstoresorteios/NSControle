@@ -77,6 +77,9 @@ export function trayStoreOf(order: { order_key: string; label?: string | null })
   return /^\d+$/.test(order.order_key) ? "687890" : null;
 }
 
+/** Status que a planilha não soma. Aguardando Vindi continua: a venda já está lançada. */
+export const FINANCE_STATUS_OUT = "cancel|aguardando pagamento|aguardando confirm";
+
 export function approvedFinanceOrder(order: {
   commercial_status?: string | null;
   data_source?: string | null;
@@ -87,7 +90,7 @@ export function approvedFinanceOrder(order: {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (status.includes("aguard") || status.includes("cancel")) return false;
+  if (/cancel|aguardando pagamento|aguardando confirm/.test(status)) return false;
   const paid = asNumber(order.sale_amount) != null || Boolean(String(order.payment_date ?? "").trim());
   if ((order.data_source ?? "") === "tray" && !paid) return false;
   return true;
@@ -182,8 +185,8 @@ export function monthSummary(
 }
 
 const STORE_LABEL: Record<string, string> = {
-  "687890": "New Store",
-  "1490060": "NS Relógios",
+  "687890": "New Store · sob encomenda",
+  "1490060": "NS Relógios · pronta entrega",
 };
 
 function storeLabel(id: string) {
