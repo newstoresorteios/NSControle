@@ -77,6 +77,22 @@ export function trayStoreOf(order: { order_key: string; label?: string | null })
   return /^\d+$/.test(order.order_key) ? "687890" : null;
 }
 
+export function approvedFinanceOrder(order: {
+  commercial_status?: string | null;
+  data_source?: string | null;
+  sale_amount?: unknown;
+  payment_date?: string | null;
+}): boolean {
+  const status = (order.commercial_status ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (status.includes("aguard") || status.includes("cancel")) return false;
+  const paid = asNumber(order.sale_amount) != null || Boolean(String(order.payment_date ?? "").trim());
+  if ((order.data_source ?? "") === "tray" && !paid) return false;
+  return true;
+}
+
 export function salesByTrayStore(orders: Array<MoneyOrder & { order_key: string; label?: string | null }>) {
   const totals: Record<"687890" | "1490060", number> = { "687890": 0, "1490060": 0 };
   for (const order of orders) {

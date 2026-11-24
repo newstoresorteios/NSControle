@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { financeSlices, monthSummary, salesByTrayStore, type MoneyOrder } from "./finance.ts";
+import { approvedFinanceOrder, financeSlices, monthSummary, salesByTrayStore, type MoneyOrder } from "./finance.ts";
 import { refundTotal } from "./refunds.ts";
 
 function close(actual: number | null, expected: number) {
@@ -14,6 +14,17 @@ const blank = {
   shipping_cost: null,
   import_tax: null,
 };
+
+test("a conta fica só com pedido aprovado", () => {
+  assert.equal(approvedFinanceOrder({ commercial_status: "A ENVIAR", data_source: "tray", sale_amount: 10, payment_date: "2026-11-01" }), true);
+  assert.equal(approvedFinanceOrder({ commercial_status: "ENVIADO", data_source: "tray", sale_amount: 10, payment_date: null }), true);
+  assert.equal(approvedFinanceOrder({ commercial_status: null, data_source: "tray", sale_amount: 10, payment_date: "2026-11-01" }), true);
+  assert.equal(approvedFinanceOrder({ commercial_status: "CANCELADO", data_source: "tray", sale_amount: 10, payment_date: "2026-11-01" }), false);
+  assert.equal(approvedFinanceOrder({ commercial_status: "AGUARDANDO PAGAMENTO", data_source: "tray", sale_amount: null, payment_date: null }), false);
+  assert.equal(approvedFinanceOrder({ commercial_status: "AGUARDANDO VINDI", data_source: "planilha", sale_amount: 10, payment_date: "2026-11-01" }), false);
+  assert.equal(approvedFinanceOrder({ commercial_status: "A ENVIAR", data_source: "tray", sale_amount: null, payment_date: null }), false);
+  assert.equal(approvedFinanceOrder({ commercial_status: null, data_source: "planilha", sale_amount: 10, payment_date: null }), true);
+});
 
 test("vendas da loja nova separam 687890 e 1490060", () => {
   const totals = salesByTrayStore([

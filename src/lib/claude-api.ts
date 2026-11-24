@@ -65,6 +65,12 @@ export async function claudeGet(url: URL) {
       select flow, order_key, label, origin, sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax
       from ctl_orders
       where finance_month = ${`${month}-01`}
+        and coalesce(commercial_status, '') !~* 'aguard|cancel'
+        and (
+          data_source is distinct from 'tray'
+          or sale_amount is not null
+          or payment_date is not null
+        )
     `;
     const summary = monthSummary(orders, null, month);
     return {
