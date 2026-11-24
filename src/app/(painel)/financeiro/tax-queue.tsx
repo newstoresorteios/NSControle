@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { markOrderTaxed, saveOrderImportTax, setOrderTaxPaid } from "./actions";
 import { db } from "@/lib/db";
-import { brl } from "@/lib/format";
+import { brl, monthLabel } from "@/lib/format";
 import { taxQueueStatus, type TaxQueueStatus } from "@/lib/taxes";
 
 const filters: Array<{ key: string; label: string }> = [
@@ -11,29 +11,45 @@ const filters: Array<{ key: string; label: string }> = [
   { key: "paga", label: "Pagas" },
 ];
 
-export async function TaxQueue({ status, error, ok }: { status?: string; error?: string; ok?: string }) {
+export async function TaxQueue({ status, error, ok, month }: { status?: string; error?: string; ok?: string; month?: string }) {
   const orders = await db()<Array<{
     id: string; order_key: string; label: string | null; product_name: string | null;
     tracking_code: string | null; import_tax: string | null; tax_paid: boolean;
-    tax_identified_at: string | null;
+    tax_identified_at: string | null; finance_month: string | null;
   }>>`
-    select id, order_key, label, product_name, tracking_code, import_tax, tax_paid, tax_identified_at
+    select id, order_key, label, product_name, tracking_code, import_tax, tax_paid, tax_identified_at, finance_month::text
     from ctl_orders where tax_identified_at is not null
-    order by tax_identified_at desc, order_key desc
+    order by finance_month desc nulls last, tax_identified_at desc, order_key desc
   `;
-  const filtered = orders.filter((order) => !status || taxQueueStatus(order) === status);
+  const months = [...new Set(orders.map((order) => (order.finance_month ? String(order.finance_month).slice(0, 7) : "")).filter(Boolean))];
+  const selected = month === "sem" ? "sem" : month && months.includes(month) ? month : months[0] ?? "sem";
+  const inMonth = orders.filter((order) => {
+    const key = order.finance_month ? String(order.finance_month).slice(0, 7) : "";
+    return selected === "sem" ? !key : key === selected;
+  });
+  const filtered = inMonth.filter((order) => !status || taxQueueStatus(order) === status);
   return (
     <div className="grid gap-4">
       <div>
         <h1 className="page-title">Fila manual de taxas</h1>
-        <p className="text-muted">Confirme a cobrança em um pedido existente. Valor e pagamento são lançamentos separados.</p>
+        <p className="text-muted">A fila mostra um mês de cada vez. Confirme a cobrança em um pedido desse mês. Valor e pagamento são lançamentos separados.</p>
       </div>
       <nav className="flex flex-wrap gap-2">
-        <Link className="button secondary" href="/financeiro">Resumo</Link>
-        <Link className="button secondary" href="/financeiro?aba=pedidos">Pedidos do mês</Link>
-        <Link className="button secondary" href="/financeiro?aba=pendencias">Pendências</Link>
-        <Link className="button secondary" href="/financeiro?aba=impostos">Impostos</Link>
-        <Link className="button" href="/financeiro?aba=taxas">Taxas</Link>
+        <Link className="button secondary" href={selected === "sem" ? "/financeiro" : `/financeiro?month=${selected}`}>Resumo</Link>
+        <Link className="button secondary" href={`/financeiro?month=${selected === "sem" ? "" : selected}&aba=pedidos`}>Pedidos do mês</Link>
+        <Link className="button secondary" href={`/financeiro?month=${selected === "sem" ? "" : selected}&aba=pendencias`}>Pendências</Link>
+        <Link className="button secondary" href={`/financeiro?month=${selected === "sem" ? "" : selected}&aba=impostos`}>Impostos</Link>
+        <Link className="button" href={`/financeiro?aba=taxas&month=${selected}`}>Taxas</Link>
+      </nav>
+      <nav className="flex flex-wrap gap-2">
+        {months.map((item) => (
+          <Link key={item} className={item === selected ? "button" : "button secondary"} href={`/financeiro?aba=taxas&month=${item}${status ? `&status=${status}` : ""}`}>
+            {monthLabel(item)}
+          </Link>
+        ))}
+        <Link className={selected === "sem" ? "button" : "button secondary"} href={`/financeiro?aba=taxas&month=sem${status ? `&status=${status}` : ""}`}>
+          Sem mês
+        </Link>
       </nav>
       {error ? <p className="text-sm text-danger">Não foi possível salvar. Confira o pedido, o valor e se há mais de um pedido com esse identificador.</p> : null}
       {ok ? <p className="text-sm text-ok">Lançamento salvo.</p> : null}
@@ -42,7 +58,7 @@ export async function TaxQueue({ status, error, ok }: { status?: string; error?:
         <button className="ok" type="submit">Confirmar cobrança</button>
       </form>
       <nav className="flex flex-wrap gap-2">
-        {filters.map((filter) => <Link key={filter.key} className="button secondary" href={`/financeiro?aba=taxas${filter.key ? `&status=${filter.key}` : ""}`}>{filter.label}</Link>)}
+        {filters.map((filter) => <Link key={filter.key} className={(!status && !filter.key) || status === filter.key ? "button" : "button secondary"} href={`/financeiro?aba=taxas&month=${selected}${filter.key ? `&status=${filter.key}` : ""}`}>{filter.label}</Link>)}
       </nav>
       <div className="card overflow-x-auto">
         <table>

@@ -20,7 +20,7 @@ function pageSizeOf(value: string | undefined) {
 
 const ABAS: { id: SheetMode; label: string; hint: string }[] = [
   { id: "pedidos", label: "Pedidos", hint: "Somente pedidos aprovados do mês, com compra ainda em aberto." },
-  { id: "acompanhamento", label: "Acompanhamento", hint: "Pedidos em aberto. Status em branco continua na lista, com aviso." },
+  { id: "acompanhamento", label: "Acompanhamento", hint: "Pedidos em aberto. Quem já tem rastreio sai da fila sem status e aparece em Rastreio." },
   { id: "rastreio", label: "Rastreio", hint: "Códigos que ainda não foram marcados como entregues." },
   { id: "entregues", label: "Entregues", hint: "Arquivo. Desmarcar Entregue devolve o pedido para a lista aberta." },
 ];
@@ -49,6 +49,7 @@ export default async function PedidosPage({
     page?: string;
     tamanho?: string;
     mes?: string;
+    loja?: string;
     erro?: string;
   }>;
 }) {
@@ -67,6 +68,7 @@ export default async function PedidosPage({
   const legacyLike = likePattern(legacy);
   const digits = orderDigits(numero);
   const textSearch = Boolean(numero || nome || idref || legacy);
+  const loja = params.loja === "ns" || params.loja === "newstore" ? params.loja : "";
   const monthParam = (params.mes || "").trim();
   const month = monthParam === "todos" || textSearch || params.fila
     ? ""
@@ -93,6 +95,7 @@ export default async function PedidosPage({
     aba,
     fila: params.fila ?? "",
     month,
+    loja,
   };
   const [found, counted, macroRows, monthRows] = await Promise.all([
     sql<RawOrder[]>`
@@ -145,6 +148,7 @@ export default async function PedidosPage({
           where delivered = false
             and data_source in ('tray', 'bi')
             and (commercial_status is null or btrim(commercial_status) = '')
+            and nullif(btrim(coalesce(tracking_code, '')), '') is null
         `
       : Promise.resolve([]),
   ]);
@@ -154,8 +158,8 @@ export default async function PedidosPage({
   const macro = macroRows[0];
   const months = monthRows.map((row) => row.month);
   const hint = ABAS.find((item) => item.id === aba)?.hint;
-  const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila, tamanho: pageSize, mes: month || (monthParam === "todos" ? "todos" : "") };
-  const filtering = Boolean(numero || nome || idref || comId || legacy || params.fila || monthParam === "todos" || (month && month !== saoPauloMonth()));
+  const listQuery = { aba, numero, nome, idref, com_id: comId, fila: params.fila, tamanho: pageSize, mes: month || (monthParam === "todos" ? "todos" : ""), loja };
+  const filtering = Boolean(numero || nome || idref || comId || legacy || params.fila || loja || monthParam === "todos" || (month && month !== saoPauloMonth()));
   const summary = filterSummary({ numero, nome, idref, comId, legacy, fila: params.fila, month });
 
   return (
@@ -197,7 +201,7 @@ export default async function PedidosPage({
         ))}
       </nav>
       <form
-        className="card grid items-end gap-3 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_9rem_8rem_7rem_auto]"
+        className="card grid items-end gap-3 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_9rem_9rem_8rem_7rem_auto]"
         action="/pedidos"
       >
         <label className="grid gap-1 text-sm">
@@ -218,6 +222,14 @@ export default async function PedidosPage({
             <option value="">Todos</option>
             <option value="com">Com ID</option>
             <option value="sem">Sem ID</option>
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm">
+          Loja
+          <select name="loja" defaultValue={loja}>
+            <option value="">Todas</option>
+            <option value="newstore">New Store</option>
+            <option value="ns">NS Relógios</option>
           </select>
         </label>
         <label className="grid gap-1 text-sm">
@@ -387,6 +399,7 @@ type SheetFilters = {
   aba: SheetMode;
   fila: string;
   month: string;
+  loja: "" | "ns" | "newstore";
 };
 
 type SqlTag = ReturnType<typeof db>;
@@ -403,6 +416,7 @@ function sheetWhere(sql: SqlTag, filters: SheetFilters) {
     ${approvedClause(sql, filters)}
     ${monthClause(sql, filters)}
     ${filaClause(sql, filters)}
+    ${storeClause(sql, filters)}
   `;
 }
 
@@ -455,6 +469,7 @@ function abaClause(sql: SqlTag, filters: SheetFilters) {
         delivered = false
         and data_source in ('tray', 'bi')
         and (commercial_status is null or btrim(commercial_status) = '')
+        and nullif(btrim(coalesce(tracking_code, '')), '') is null
       )
     )`;
   }
@@ -480,6 +495,23 @@ function monthClause(sql: SqlTag, filters: SheetFilters) {
       and coalesce(payment_date, purchase_date) < ${next}::date
     )
   )`;
+}
+
+function storeClause(sql: SqlTag, filters: SheetFilters) {
+  if (filters.loja === "ns") {
+    return sql`and (order_key like '1490060:%' or coalesce(label, '') ilike '%1490060%')`;
+  }
+  if (filters.loja === "newstore") {
+    return sql`and (
+      order_key like '687890:%'
+      or (
+        data_source in ('tray', 'bi')
+        and order_key !~ '^1490060:'
+        and coalesce(label, '') not ilike '%1490060%'
+      )
+    )`;
+  }
+  return sql``;
 }
 
 function filaClause(sql: SqlTag, filters: SheetFilters) {
@@ -571,6 +603,7 @@ function href(params: {
   page?: number;
   tamanho?: number;
   mes?: string;
+  loja?: string;
 }) {
   const search = new URLSearchParams();
   if (params.aba) search.set("aba", params.aba);
@@ -580,6 +613,7 @@ function href(params: {
   if (params.com_id === "com" || params.com_id === "sem") search.set("com_id", params.com_id);
   if (params.fila) search.set("fila", params.fila);
   if (params.mes) search.set("mes", params.mes);
+  if (params.loja === "ns" || params.loja === "newstore") search.set("loja", params.loja);
   if (params.tamanho && params.tamanho !== DEFAULT_PAGE_SIZE) search.set("tamanho", String(params.tamanho));
   if (params.page && params.page > 1) search.set("page", String(params.page));
   const query = search.toString();

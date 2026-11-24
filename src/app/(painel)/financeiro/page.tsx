@@ -80,7 +80,7 @@ export default async function FinanceiroPage({
   const params = await searchParams;
   await requireTeam();
   if (params.aba === "taxas") {
-    return <TaxQueue status={params.status} error={params.erro} ok={params.ok} />;
+    return <TaxQueue status={params.status} error={params.erro} ok={params.ok} month={params.month} />;
   }
   const icmsCreditFactor = params.icms === "70" ? 0.7 : 1;
   const sql = db();

@@ -85,6 +85,16 @@ def list_notas_sheets(workbook):
     return [name for _rank, name in ranked]
 
 
+def workbook_sheet(workbook, name: str):
+    if name in workbook.sheetnames:
+        return workbook[name]
+    target = fold(name)
+    for current in workbook.sheetnames:
+        if fold(current) == target:
+            return workbook[current]
+    raise KeyError(name)
+
+
 def fold(value: str) -> str:
     text = unicodedata.normalize("NFKD", value)
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
@@ -626,7 +636,7 @@ class Importer:
             self.apply_tax(*tax)
 
     def read_entregues(self, workbook):
-        rows = list(workbook["Entregues"].iter_rows(values_only=True))
+        rows = list(workbook_sheet(workbook, "Entregues").iter_rows(values_only=True))
         for row in rows[1:]:
             key, label = parse_key(cell(row, 0))
             if key:
@@ -652,7 +662,7 @@ class Importer:
         self._sheet_counts["Entregues"] = max(0, len(rows) - 1)
 
     def read_pedidos(self, workbook):
-        rows = list(workbook["Pedidos"].iter_rows(values_only=True))
+        rows = list(workbook_sheet(workbook, "Pedidos").iter_rows(values_only=True))
         for row in rows[1:]:
             key, label = parse_key(cell(row, 0))
             if key:
@@ -678,7 +688,7 @@ class Importer:
         self._sheet_counts["Pedidos"] = max(0, len(rows) - 1)
 
     def read_acompanhamentos(self, workbook):
-        rows = list(workbook["Acompanhamentos"].iter_rows(values_only=True))
+        rows = list(workbook_sheet(workbook, "Acompanhamentos").iter_rows(values_only=True))
         for row in rows[1:]:
             key, label = parse_key(cell(row, 0))
             status = clean_text(cell(row, 3))
@@ -702,7 +712,7 @@ class Importer:
             )
 
     def read_rastreamento(self, workbook):
-        rows = list(workbook["Rastreamento"].iter_rows(values_only=True))
+        rows = list(workbook_sheet(workbook, "Rastreamento").iter_rows(values_only=True))
         for row in rows[1:]:
             key, label = parse_key(cell(row, 1))
             event = None
@@ -805,7 +815,7 @@ class Importer:
         return max(matches, key=lambda order: order["finance_month_key"])["id"]
 
     def read_cancelamentos(self, workbook):
-        rows = list(workbook["Cancelamentos"].iter_rows(values_only=True))
+        rows = list(workbook_sheet(workbook, "Cancelamentos").iter_rows(values_only=True))
         for row in rows:
             key, _label = parse_key(cell(row, 0))
             if not key:
@@ -829,7 +839,7 @@ class Importer:
             )
 
     def read_estoque(self, workbook):
-        rows = list(workbook["Estoque"].iter_rows(values_only=True))
+        rows = list(workbook_sheet(workbook, "Estoque").iter_rows(values_only=True))
         for row in rows:
             model = clean_text(cell(row, 3))
             brand = clean_text(cell(row, 2))

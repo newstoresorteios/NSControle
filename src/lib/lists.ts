@@ -135,7 +135,9 @@ export function shipmentLabel(orderKey: string, label: string | null) {
     const pretty = orderKey.slice(6).replace(/-/g, " ");
     return label && label !== orderKey ? label : pretty;
   }
-  const match = /^(\d{1,6}):([a-z0-9].*)$/i.exec(orderKey);
+  const storeOrder = /^(\d+):(\d+)$/.exec(orderKey);
+  if (storeOrder) return storeOrder[2];
+  const match = /^(\d+):([a-z0-9].*)$/i.exec(orderKey);
   if (match) return `${match[1]} (${match[2]})`;
   if (/^\d+$/.test(orderKey)) return orderKey;
   return label || orderKey;

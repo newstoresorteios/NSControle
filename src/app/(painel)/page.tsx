@@ -148,6 +148,10 @@ export default async function HomePage({
         and nullif(btrim(coalesce(tracking_code, '')), '') is null
         and coalesce(commercial_status, '') !~* 'aguard|cancel'
         and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
+        and (
+          finance_month >= date '2026-09-01'
+          or coalesce(commercial_status, '') ~* 'enviar|enviado|pendente|monitor'
+        )
     `,
     params.atraso === "1"
       ? sql<{
@@ -167,6 +171,10 @@ export default async function HomePage({
             and nullif(btrim(coalesce(tracking_code, '')), '') is null
             and coalesce(commercial_status, '') !~* 'aguard|cancel'
             and coalesce(payment_date, purchase_date, created_at::date) <= (timezone('America/Sao_Paulo', now()))::date - 15
+            and (
+              finance_month >= date '2026-09-01'
+              or coalesce(commercial_status, '') ~* 'enviar|enviado|pendente|monitor'
+            )
           order by coalesce(payment_date, purchase_date) asc nulls last
           limit 200
         `
@@ -253,7 +261,7 @@ export default async function HomePage({
       {showLate ? (
         <section id="atraso" className="card overflow-x-auto">
           <h2 className="section-title">Pedidos aprovados sem código de rastreio</h2>
-          <p className="mt-1 text-sm text-muted">Pagos há mais de 15 dias e ainda sem rastreio.</p>
+          <p className="mt-1 text-sm text-muted">Pagos há mais de 15 dias e ainda sem código. A fila olha de setembro de 2026 para cá; venda antiga da loja sem rastreio não entra aqui.</p>
           <table className="mt-3">
             <thead>
               <tr>
