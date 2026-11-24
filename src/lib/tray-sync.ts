@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { TrayRequestError, trayConfigured, trayGet } from "@/lib/tray-client";
-import { trayRecipient } from "@/lib/integracao";
+import { trayOrderRef, trayRecipient } from "@/lib/integracao";
 import {
   addIsoDays,
   buildTrayDraft,
@@ -34,6 +34,9 @@ export type SyncReport = {
   skipped: number;
   cancellations: number;
   failures: number;
+  fees_checked: number;
+  fees_filled: number;
+  fees_pending: number;
 };
 
 type SyncState = {
@@ -56,10 +59,25 @@ type Progress = {
   skipped: number;
   cancellations: number;
   failures: number;
+  feesChecked: number;
+  feesFilled: number;
+  feesPending: number;
 };
 
 function empty(reason: string, ok: boolean): SyncReport {
-  return { ok, reason, listed: 0, fetched: 0, upserted: 0, skipped: 0, cancellations: 0, failures: 0 };
+  return {
+    ok,
+    reason,
+    listed: 0,
+    fetched: 0,
+    upserted: 0,
+    skipped: 0,
+    cancellations: 0,
+    failures: 0,
+    fees_checked: 0,
+    fees_filled: 0,
+    fees_pending: 0,
+  };
 }
 
 function reportFrom(progress: Progress, reason: string, ok: boolean): SyncReport {
@@ -72,6 +90,9 @@ function reportFrom(progress: Progress, reason: string, ok: boolean): SyncReport
     skipped: progress.skipped,
     cancellations: progress.cancellations,
     failures: progress.failures,
+    fees_checked: progress.feesChecked,
+    fees_filled: progress.feesFilled,
+    fees_pending: progress.feesPending,
   };
 }
 
@@ -121,6 +142,9 @@ async function finish(status: string, error: string | null, progress: Progress) 
     skipped: progress.skipped,
     cancellations: progress.cancellations,
     failures: progress.failures,
+    fees_checked: progress.feesChecked,
+    fees_filled: progress.feesFilled,
+    fees_pending: progress.feesPending,
   };
   await db()`
     update ctl_tray_sync set
@@ -229,9 +253,14 @@ async function writeCancellation(draft: TrayDraft, orderId: string | null) {
 }
 
 async function pullOne(key: string, listedModified: unknown) {
-  const complete = await trayGet(`/internal/orders/${key}/complete`);
+  const ref = trayOrderRef(key);
+  if (!ref) return { upserted: false, cancellation: false, payment_fee: null as number | null };
+  const complete = await trayGet(
+    `/internal/orders/${ref.id}/complete`,
+    ref.store ? { store: ref.store } : undefined,
+  );
   const draft = buildTrayDraft(complete as TrayComplete);
-  if (!draft) return { upserted: false, cancellation: false };
+  if (!draft) return { upserted: false, cancellation: false, payment_fee: null as number | null };
   if (!draft.tray_modified_at) draft.tray_modified_at = trayTimeIso(listedModified);
   const existing = await findOrder(key);
   const orderId = await writeOrder(existing, draft);
@@ -248,7 +277,66 @@ async function pullOne(key: string, listedModified: unknown) {
       where tracking_code = ${draft.tracking_code} and order_id is null
     `;
   }
-  return { upserted: true, cancellation };
+  return { upserted: true, cancellation, payment_fee: draft.payment_fee };
+}
+
+const FEE_SYNC_LIMIT = 10;
+
+async function missingFeeKeys(limit: number) {
+  return db()<{ order_key: string }[]>`
+    select order_key
+    from (
+      select distinct on (order_key) order_key, finance_month, payment_date
+      from ctl_orders
+      where payment_fee is null
+        and order_key ~ '^[0-9]+(:[0-9]+)?$'
+        and coalesce(commercial_status, '') !~* 'aguard|cancel'
+        and (
+          data_source is distinct from 'tray'
+          or sale_amount is not null
+          or payment_date is not null
+        )
+      order by order_key, finance_month desc nulls last, payment_date desc nulls last
+    ) missing
+    order by finance_month desc nulls last, payment_date desc nulls last
+    limit ${limit}
+  `;
+}
+
+async function countMissingFees() {
+  const rows = await db()<{ total: number }[]>`
+    select count(distinct order_key)::int as total
+    from ctl_orders
+    where payment_fee is null
+      and order_key ~ '^[0-9]+(:[0-9]+)?$'
+      and coalesce(commercial_status, '') !~* 'aguard|cancel'
+      and (
+        data_source is distinct from 'tray'
+        or sale_amount is not null
+        or payment_date is not null
+      )
+  `;
+  return rows[0]?.total ?? 0;
+}
+
+async function refreshMissingFees(limit: number) {
+  const rows = await missingFeeKeys(limit);
+  let filled = 0;
+  let checked = 0;
+  let failures = 0;
+  for (const row of rows) {
+    if (checked > 0) await pause();
+    checked += 1;
+    try {
+      const result = await pullOne(row.order_key, null);
+      if (!result.upserted) failures += 1;
+      else if ((result.payment_fee ?? 0) > 0) filled += 1;
+    } catch (error) {
+      if (isLimit(error)) throw error;
+      failures += 1;
+    }
+  }
+  return { checked, filled, failures, pending: await countMissingFees() };
 }
 
 async function take(progress: Progress, seen: Set<string>, key: string, modified: unknown) {
@@ -281,6 +369,14 @@ async function execute(state: SyncState, progress: Progress, today: string) {
   `;
   progress.upserted += fees.count;
   progress.upserted += filled.count;
+
+  const feePass = await refreshMissingFees(Math.min(FEE_SYNC_LIMIT, BATCH));
+  progress.fetched += feePass.checked;
+  progress.upserted += feePass.checked - feePass.failures;
+  progress.failures += feePass.failures;
+  progress.feesChecked = feePass.checked;
+  progress.feesFilled = feePass.filled;
+  progress.feesPending = feePass.pending;
 
   const seen = new Set<string>();
   let events: Array<Record<string, unknown>> = [];
@@ -390,6 +486,9 @@ export async function runTraySync(options?: { force?: boolean }): Promise<SyncRe
     skipped: 0,
     cancellations: 0,
     failures: 0,
+    feesChecked: 0,
+    feesFilled: 0,
+    feesPending: 0,
   };
 
   try {
@@ -400,6 +499,52 @@ export async function runTraySync(options?: { force?: boolean }): Promise<SyncRe
   } catch (error) {
     const limited = isLimit(error);
     if (!limited) console.error("tray sync", error instanceof Error ? error.message : "erro");
+    await finish(limited ? "limite" : "erro", limited ? "limite" : "erro", progress).catch(() => undefined);
+    return reportFrom(progress, limited ? "limite" : "erro", false);
+  }
+}
+
+export async function runPaymentFeeRefresh(options?: { force?: boolean }): Promise<SyncReport> {
+  if (!trayConfigured()) return empty("nao_configurado", false);
+  let state: SyncState | null;
+  try {
+    state = await claim(options?.force === true);
+  } catch (error) {
+    console.error("tray fee refresh", error instanceof Error ? error.message : "erro");
+    return empty("erro", false);
+  }
+  if (!state) return empty("aguardando", true);
+  const progress: Progress = {
+    page: state.cursor_page || 1,
+    eventCursor: state.last_event_id || 0,
+    backfillDone: state.backfill_done,
+    watermark: state.watermark,
+    listed: 0,
+    fetched: 0,
+    upserted: 0,
+    skipped: 0,
+    cancellations: 0,
+    failures: 0,
+    feesChecked: 0,
+    feesFilled: 0,
+    feesPending: 0,
+  };
+  try {
+    const feePass = await refreshMissingFees(BATCH);
+    progress.fetched = feePass.checked;
+    progress.upserted = feePass.checked - feePass.failures;
+    progress.failures = feePass.failures;
+    progress.feesChecked = feePass.checked;
+    progress.feesFilled = feePass.filled;
+    progress.feesPending = feePass.pending;
+    await finish("ok", null, progress);
+    revalidatePath("/");
+    revalidatePath("/pedidos");
+    revalidatePath("/financeiro");
+    return reportFrom(progress, "ok", true);
+  } catch (error) {
+    const limited = isLimit(error);
+    if (!limited) console.error("tray fee refresh", error instanceof Error ? error.message : "erro");
     await finish(limited ? "limite" : "erro", limited ? "limite" : "erro", progress).catch(() => undefined);
     return reportFrom(progress, limited ? "limite" : "erro", false);
   }

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { runCorreiosSync } from "@/lib/correios-sync";
-import { runTraySync } from "@/lib/tray-sync";
+import { runPaymentFeeRefresh, runTraySync } from "@/lib/tray-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +30,12 @@ async function handle(request: Request) {
   if (!authorized(request)) {
     return Response.json({ ok: false, reason: "nao_autorizado" }, { status: 401 });
   }
-  const force = new URL(request.url).searchParams.get("force") === "1";
+  const url = new URL(request.url);
+  const force = url.searchParams.get("force") === "1";
+  if (url.searchParams.get("taxas") === "1") {
+    const fees = await runPaymentFeeRefresh({ force });
+    return Response.json(fees, { status: statusFor(fees.reason, fees.ok) });
+  }
   const report = await runTraySync({ force });
   const correios = await runCorreiosSync({ force });
   const primary = report.reason === "nao_configurado" ? correios : report;

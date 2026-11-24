@@ -225,8 +225,9 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
   const shipmentValue = money(shipping.shipment_value);
   const discount = money(order.discount);
   const taxes = money(order.taxes);
+  const rateKnown = Object.prototype.hasOwnProperty.call(payment, "payment_method_rate");
   const paymentRate = money(payment.payment_method_rate);
-  const paymentFee = paymentRate != null && paymentRate > 0 ? paymentRate : null;
+  const paymentFee = !rateKnown ? null : paymentRate != null && paymentRate > 0 ? paymentRate : 0;
   const records = Array.isArray(payment.records)
     ? payment.records.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     : [];
@@ -252,7 +253,7 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
     shipment && shipmentValue != null ? `${shipment} frete ${shipmentValue.toFixed(2)}` : shipment,
     discount ? `desconto ${discount.toFixed(2)}` : null,
     taxes ? `impostos ${taxes.toFixed(2)}` : null,
-    paymentFee != null ? `tarifa ${paymentFee.toFixed(2)}` : null,
+    paymentFee != null && paymentFee > 0 ? `tarifa ${paymentFee.toFixed(2)}` : null,
     paidAmount != null ? `pagamento ${paidAmount.toFixed(2)}` : null,
     transactionId ? `transação ${transactionId}` : null,
     paymentNote ? `obs ${paymentNote}` : null,
@@ -368,7 +369,8 @@ export function mergeTrayOrder(
   if (draft.shipping_cost != null && (existing.shipping_cost == null || existing.shipping_cost === "")) {
     row.shipping_cost = draft.shipping_cost;
   }
-  if (draft.payment_fee != null && (existing.payment_fee == null || existing.payment_fee === "")) {
+  const currentFee = existing.payment_fee == null || existing.payment_fee === "" ? null : Number(existing.payment_fee);
+  if (draft.payment_fee != null && (currentFee == null || (currentFee === 0 && draft.payment_fee > 0))) {
     row.payment_fee = draft.payment_fee;
   }
   if (draft.tracking_code && (!sheetOwned || !existing.tracking_code)) row.tracking_code = draft.tracking_code;

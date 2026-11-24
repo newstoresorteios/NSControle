@@ -87,7 +87,13 @@ test("taxa do meio de pagamento vira tarifa e não substitui valor já lançado"
     order: { ...paid.order, taxes: "18.90" },
     payment: { ...paid.payment, payment_method_rate: "-90.00" },
   });
-  assert.equal(discountOnly?.payment_fee, null);
+  assert.equal(discountOnly?.payment_fee, 0);
+  assert.doesNotMatch(discountOnly?.notes_tray ?? "", /tarifa/);
+  const checked = buildTrayDraft({
+    ...paid,
+    payment: { ...paid.payment, payment_method_rate: null },
+  });
+  assert.equal(checked?.payment_fee, 0);
   const kept = mergeTrayOrder(
     {
       id: "abc",
@@ -111,6 +117,29 @@ test("taxa do meio de pagamento vira tarifa e não substitui valor já lançado"
     draft,
   );
   assert.equal(kept.row.payment_fee, undefined);
+  const zero = mergeTrayOrder(
+    {
+      id: "abc",
+      order_key: "1200",
+      flow: "loja_nova",
+      finance_month: "2026-10-01",
+      label: "Pedido 1200",
+      origin: null,
+      product_name: "Relógio",
+      reference: "Relógio",
+      commercial_status: "A ENVIAR",
+      sale_amount: 1500.5,
+      payment_date: "2026-10-03",
+      purchase_date: "2026-10-03",
+      tracking_code: "AB123456789BR",
+      delivered: false,
+      data_source: "tray",
+      tray_modified_at: null,
+      payment_fee: 0,
+    },
+    draft,
+  );
+  assert.equal(zero.row.payment_fee, 30.52);
 });
 
 test("pedido sem pagamento não entra no financeiro", () => {
