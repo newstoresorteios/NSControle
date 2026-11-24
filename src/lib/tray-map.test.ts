@@ -63,16 +63,31 @@ test("pedido pago da loja vira venda, rastreio e mês financeiro", () => {
   assert.equal(inserted.sale_amount, 1500.5);
 });
 
-test("imposto da Tray vira taxa de pagamento e não substitui valor já lançado", () => {
+test("taxa do meio de pagamento vira tarifa e não substitui valor já lançado", () => {
   const draft = buildTrayDraft({
     ...paid,
     order: { ...paid.order, taxes: "18.90" },
+    payment: {
+      ...paid.payment,
+      payment_method_rate: "30.52",
+      records: [{ method: "Pix - Vindi", value: "6752.47", note: "77787465 || 18/11/2026 14:01:04 || 296385036" }],
+      transactions: [{ transaction_id: "296385036", url_payment: null }],
+    },
   });
   assert.ok(draft);
-  assert.equal(draft.payment_fee, 18.9);
+  assert.equal(draft.payment_fee, 30.52);
   assert.match(draft.notes_tray, /impostos 18.90/);
+  assert.match(draft.notes_tray, /tarifa 30.52/);
+  assert.match(draft.notes_tray, /pagamento 6752.47/);
+  assert.match(draft.notes_tray, /transação 296385036/);
   const inserted = mergeTrayOrder(null, draft).row;
-  assert.equal(inserted.payment_fee, 18.9);
+  assert.equal(inserted.payment_fee, 30.52);
+  const discountOnly = buildTrayDraft({
+    ...paid,
+    order: { ...paid.order, taxes: "18.90" },
+    payment: { ...paid.payment, payment_method_rate: "-90.00" },
+  });
+  assert.equal(discountOnly?.payment_fee, null);
   const kept = mergeTrayOrder(
     {
       id: "abc",

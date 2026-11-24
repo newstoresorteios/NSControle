@@ -188,7 +188,7 @@ export default async function FinanceiroPage({
           <p className="max-w-3xl text-sm text-muted">
             Vendas e mês vêm das lojas. Frete, produto e rastreio vêm do pedido. Custo de compra, taxa da máquina,
             alfândega e o status da compra ficam na ficha. Pronta entrega e origem Brasil não exigem alfândega.
-            A taxa de pagamento entra quando a Tray informa o imposto do pedido.
+            A taxa de pagamento entra quando a Tray informa a taxa do meio de pagamento.
           </p>
         </div>
         <form className="flex flex-wrap items-center gap-2" action="/financeiro">

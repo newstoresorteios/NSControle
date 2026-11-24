@@ -274,10 +274,10 @@ async function execute(state: SyncState, progress: Progress, today: string) {
   `;
   const fees = await db()`
     update ctl_orders
-    set payment_fee = substring(notes_tray from 'impostos ([0-9]+([.][0-9]+)?)')::numeric
+    set payment_fee = substring(notes_tray from 'tarifa ([0-9]+([.][0-9]+)?)')::numeric
     where payment_fee is null
-      and substring(notes_tray from 'impostos ([0-9]+([.][0-9]+)?)') ~ '^[0-9]'
-      and substring(notes_tray from 'impostos ([0-9]+([.][0-9]+)?)')::numeric > 0
+      and substring(notes_tray from 'tarifa ([0-9]+([.][0-9]+)?)') ~ '^[0-9]'
+      and substring(notes_tray from 'tarifa ([0-9]+([.][0-9]+)?)')::numeric > 0
   `;
   progress.upserted += fees.count;
   progress.upserted += filled.count;
