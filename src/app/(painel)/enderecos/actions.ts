@@ -53,3 +53,21 @@ export async function updateAddress(formData: FormData) {
   revalidatePath("/enderecos");
   redirect("/enderecos?ok=1");
 }
+
+export async function deleteAddress(formData: FormData) {
+  await requireTeam();
+  const id = text(formData, "id") ?? "";
+  if (!validUuid(id)) redirect("/enderecos?erro=excluir");
+  let missing = false;
+  try {
+    const removed = await db()<{ id: string }[]>`
+      delete from ctl_redirect_addresses where id = ${id} returning id
+    `;
+    missing = removed.length === 0;
+  } catch {
+    redirect("/enderecos?erro=excluir");
+  }
+  if (missing) redirect("/enderecos?erro=excluir");
+  revalidatePath("/enderecos");
+  redirect("/enderecos?ok=excluido");
+}

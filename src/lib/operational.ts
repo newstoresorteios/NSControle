@@ -1,3 +1,16 @@
+export function panelPath(value: string | null | undefined, prefix: string, fallback: string) {
+  if (!value || !value.startsWith(prefix) || value.startsWith("//") || value.includes("://")) return fallback;
+  const bare = value.split("#")[0];
+  if (!/^\/[A-Za-z0-9\-/_?=&%.+]*$/.test(bare)) return fallback;
+  return bare;
+}
+
+export function pathWith(path: string, key: string, value: string) {
+  const url = new URL(path, "http://painel.local");
+  url.searchParams.set(key, value);
+  return `${url.pathname}${url.search}`;
+}
+
 export function validUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }

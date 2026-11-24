@@ -274,10 +274,14 @@ export async function deleteInvoice(formData: FormData) {
     join ctl_supplier_invoice_lines l on l.id = k.line_id
     where l.invoice_id = ${id} and k.order_id is not null
   `;
-  await sql`delete from ctl_supplier_invoices where id = ${id}`;
+  try {
+    await sql`delete from ctl_supplier_invoices where id = ${id}`;
+  } catch {
+    redirect("/pagamentos?erro=excluir");
+  }
   revalidatePath("/pagamentos");
   for (const row of previous) revalidatePath(`/pedidos/${row.order_id}`);
-  redirect("/pagamentos");
+  redirect("/pagamentos?ok=excluida");
 }
 
 async function readInvoice(raw: string): Promise<ParsedInvoice> {

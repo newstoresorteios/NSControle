@@ -1,4 +1,5 @@
-import { createAddress, updateAddress } from "@/app/(painel)/enderecos/actions";
+import { createAddress, deleteAddress, updateAddress } from "@/app/(painel)/enderecos/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ADDRESS_USES, withCurrent } from "@/lib/lists";
@@ -40,8 +41,10 @@ export default async function EnderecosPage({
         <h1 className="page-title">Endereços</h1>
         <p className="text-muted">Nomes e CPFs usados nos redirecionadores, com o uso em cada destino.</p>
       </div>
-      {params.erro ? <p className="text-sm text-danger">Não foi possível salvar o endereço.</p> : null}
-      {params.ok ? <p className="text-sm text-ok">Endereço atualizado.</p> : null}
+      {params.erro === "excluir" ? <p className="text-sm text-danger">Não foi possível excluir o endereço.</p> : null}
+      {params.erro && params.erro !== "excluir" ? <p className="text-sm text-danger">Não foi possível salvar o endereço.</p> : null}
+      {params.ok === "excluido" ? <p className="text-sm text-ok">Endereço excluído.</p> : null}
+      {params.ok && params.ok !== "excluido" ? <p className="text-sm text-ok">Endereço atualizado.</p> : null}
       <details className="card">
         <summary className="section-title">Novo endereço</summary>
         <AddressForm action={createAddress} />
@@ -73,6 +76,14 @@ export default async function EnderecosPage({
                     <summary className="cursor-pointer underline">Editar</summary>
                     <AddressForm action={updateAddress} address={row} />
                   </details>
+                  <div className="mt-2">
+                    <ConfirmDelete
+                      action={deleteAddress}
+                      fields={{ id: row.id }}
+                      title="Excluir endereço"
+                      message={`Excluir o endereço de ${row.name}?`}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -112,7 +123,17 @@ function AddressForm({
       <UseField label="Estados Unidos" name="use_us" value={address?.use_us} />
       <UseField label="Europa" name="use_eu" value={address?.use_eu} />
       <UseField label="Japão" name="use_jp" value={address?.use_jp} />
-      <button className="ok md:w-fit" type="submit">{address ? "Salvar" : "Cadastrar"}</button>
+      <div className="flex flex-wrap gap-2">
+        <button className="ok md:w-fit" type="submit">{address ? "Salvar" : "Cadastrar"}</button>
+        {address ? (
+          <ConfirmDelete
+            action={deleteAddress}
+            fields={{ id: address.id }}
+            title="Excluir endereço"
+            message={`Excluir o endereço de ${address.name}?`}
+          />
+        ) : null}
+      </div>
     </form>
   );
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { deleteNote, saveNote } from "./actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl } from "@/lib/format";
@@ -107,7 +108,8 @@ export default async function IntermediacaoPage({
         </nav>
       </div>
       {params.erro ? <p role="alert" className="text-danger">{params.erro}</p> : null}
-      {params.ok ? <p role="status" className="text-ok">Nota atualizada.</p> : null}
+      {params.ok === "excluida" ? <p role="status" className="text-ok">Nota excluída.</p> : null}
+      {params.ok && params.ok !== "excluida" ? <p role="status" className="text-ok">Nota atualizada.</p> : null}
       <form action={saveNote} className="card grid gap-3 md:grid-cols-4">
         <h2 className="section-title md:col-span-4">{editing ? `Alterar nota ${editing.label || editing.order_key}` : `Nova nota · ${monthRef(selected)}`}</h2>
         <input type="hidden" name="month" value={`${selected}-01`} />
@@ -122,22 +124,19 @@ export default async function IntermediacaoPage({
         <label>Valor comprado<input name="purchase_amount" inputMode="decimal" defaultValue={moneyValue(editing?.purchase_amount ?? null)} /></label>
         <label>Taxa / alfândega<input name="payment_fee" inputMode="decimal" defaultValue={moneyValue(editing?.payment_fee ?? null)} /></label>
         <label>Frete<input name="shipping_cost" inputMode="decimal" defaultValue={moneyValue(editing?.shipping_cost ?? null)} /></label>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <button type="submit">{editing ? "Salvar alteração" : "Cadastrar nota"}</button>
           {editing ? <Link className="button secondary" href={`/intermediacao?month=${selected}`}>Cancelar</Link> : null}
+          {editing ? (
+            <ConfirmDelete
+              action={deleteNote}
+              fields={{ month: `${selected}-01`, id: editing.id }}
+              title="Excluir nota"
+              message={`Excluir a nota ${editing.label || editing.order_key}?`}
+            />
+          ) : null}
         </div>
       </form>
-      {editing ? (
-        <form action={deleteNote} className="card flex flex-wrap items-center gap-3">
-          <input type="hidden" name="month" value={`${selected}-01`} />
-          <input type="hidden" name="id" value={editing.id} />
-          <label className="flex items-center gap-2 normal-case tracking-normal">
-            <input name="confirmed" type="checkbox" required />
-            Confirmo a exclusão desta nota
-          </label>
-          <button className="danger" type="submit">Excluir nota</button>
-        </form>
-      ) : null}
       {archived.length ? (
         <p className="text-sm text-muted">
           {historico
@@ -213,7 +212,15 @@ export default async function IntermediacaoPage({
                   )}
                 </td>
                 <td>
-                  <Link className="underline" href={`/intermediacao?month=${selected}&nota=${note.id}${historico ? "&historico=1" : ""}`}>Alterar</Link>
+                  <div className="flex flex-wrap gap-2">
+                    <Link className="underline" href={`/intermediacao?month=${selected}&nota=${note.id}${historico ? "&historico=1" : ""}`}>Alterar</Link>
+                    <ConfirmDelete
+                      action={deleteNote}
+                      fields={{ month: `${selected}-01`, id: note.id }}
+                      title="Excluir nota"
+                      message={`Excluir a nota ${note.label || note.order_key}?`}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}

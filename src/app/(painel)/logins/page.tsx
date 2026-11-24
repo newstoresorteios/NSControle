@@ -1,4 +1,5 @@
-import { createEntry, updateEntry } from "@/app/(painel)/logins/actions";
+import { createEntry, deleteEntry, updateEntry } from "@/app/(painel)/logins/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { VaultSecret } from "@/components/vault-secret";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -41,8 +42,10 @@ export default async function LoginsPage({
           Sistemas externos da equipe. A senha fica cifrada e só abre para quem está logado neste painel.
         </p>
       </div>
-      {params.erro ? <p className="text-sm text-danger">Não foi possível salvar.</p> : null}
-      {params.ok ? <p className="text-sm text-ok">Registro atualizado.</p> : null}
+      {params.erro === "excluir" ? <p className="text-sm text-danger">Não foi possível excluir o registro.</p> : null}
+      {params.erro && params.erro !== "excluir" ? <p className="text-sm text-danger">Não foi possível salvar.</p> : null}
+      {params.ok === "excluido" ? <p className="text-sm text-ok">Registro excluído.</p> : null}
+      {params.ok && params.ok !== "excluido" ? <p className="text-sm text-ok">Registro atualizado.</p> : null}
       <details className="card">
         <summary className="section-title">Novo registro</summary>
         <EntryForm action={createEntry} />
@@ -75,6 +78,14 @@ export default async function LoginsPage({
                       <summary className="cursor-pointer underline">Editar</summary>
                       <EntryForm action={updateEntry} entry={row} />
                     </details>
+                    <div className="mt-2">
+                      <ConfirmDelete
+                        action={deleteEntry}
+                        fields={{ id: row.id }}
+                        title="Excluir registro"
+                        message={`Excluir ${row.name}?`}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -111,6 +122,14 @@ export default async function LoginsPage({
                       <summary className="cursor-pointer underline">Editar</summary>
                       <EntryForm action={updateEntry} entry={row} />
                     </details>
+                    <div className="mt-2">
+                      <ConfirmDelete
+                        action={deleteEntry}
+                        fields={{ id: row.id }}
+                        title="Excluir registro"
+                        message={`Excluir ${row.name}?`}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -175,7 +194,17 @@ function EntryForm({
         Observação
         <input name="note" defaultValue={entry?.note ?? ""} />
       </label>
-      <button className="ok md:w-fit" type="submit">{entry ? "Salvar" : "Cadastrar"}</button>
+      <div className="flex flex-wrap gap-2">
+        <button className="ok md:w-fit" type="submit">{entry ? "Salvar" : "Cadastrar"}</button>
+        {entry ? (
+          <ConfirmDelete
+            action={deleteEntry}
+            fields={{ id: entry.id }}
+            title="Excluir registro"
+            message={`Excluir ${entry.name}?`}
+          />
+        ) : null}
+      </div>
     </form>
   );
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createCancellation, updateCancellation } from "@/app/(painel)/cancelamentos/actions";
+import { createCancellation, deleteCancellation, updateCancellation } from "@/app/(painel)/cancelamentos/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl, monthLabel, shortDate } from "@/lib/format";
@@ -78,8 +79,10 @@ export default async function CancelamentosPage({
           ))}
         </nav>
       </div>
-      {params.erro ? <p className="text-sm text-danger">Não foi possível registrar o cancelamento.</p> : null}
-      {params.ok ? <p className="text-sm text-ok">Cancelamento atualizado.</p> : null}
+      {params.erro === "excluir" ? <p className="text-sm text-danger">Não foi possível excluir o cancelamento.</p> : null}
+      {params.erro && params.erro !== "excluir" ? <p className="text-sm text-danger">Não foi possível registrar o cancelamento.</p> : null}
+      {params.ok === "excluido" ? <p className="text-sm text-ok">Cancelamento excluído.</p> : null}
+      {params.ok && params.ok !== "excluido" ? <p className="text-sm text-ok">Cancelamento atualizado.</p> : null}
       <details className="card">
         <summary className="section-title">Novo cancelamento</summary>
         <form action={createCancellation} className="mt-3 grid gap-3 md:grid-cols-3">
@@ -146,9 +149,25 @@ export default async function CancelamentosPage({
                       <label className="grid gap-1 text-sm">Devolvido em<input name="done_date" type="date" defaultValue={item.done_date ? String(item.done_date).slice(0, 10) : ""} /></label>
                       <label className="grid gap-1 text-sm">Dados bancários<input name="bank_details" defaultValue={item.bank_details ?? ""} /></label>
                       <label className="grid gap-1 text-sm">Motivo<input name="reason" defaultValue={item.reason ?? ""} /></label>
-                      <button className="ok" type="submit">Salvar</button>
+                      <div className="flex flex-wrap gap-2">
+                        <button className="ok" type="submit">Salvar</button>
+                        <ConfirmDelete
+                          action={deleteCancellation}
+                          fields={{ id: item.id, month: selected }}
+                          title="Excluir cancelamento"
+                          message={`Excluir o cancelamento${item.order_key ? ` do pedido ${item.order_key}` : ""}?`}
+                        />
+                      </div>
                     </form>
                   </details>
+                  <div className="mt-2">
+                    <ConfirmDelete
+                      action={deleteCancellation}
+                      fields={{ id: item.id, month: selected }}
+                      title="Excluir cancelamento"
+                      message={`Excluir o cancelamento${item.order_key ? ` do pedido ${item.order_key}` : ""}?`}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}

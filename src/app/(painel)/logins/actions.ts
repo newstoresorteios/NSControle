@@ -79,3 +79,21 @@ export async function updateEntry(formData: FormData) {
   revalidatePath("/logins");
   redirect("/logins?ok=1");
 }
+
+export async function deleteEntry(formData: FormData) {
+  await requireTeam();
+  const id = text(formData, "id") ?? "";
+  if (!validUuid(id)) redirect("/logins?erro=excluir");
+  let missing = false;
+  try {
+    const removed = await db()<{ id: string }[]>`
+      delete from ctl_vault_entries where id = ${id} returning id
+    `;
+    missing = removed.length === 0;
+  } catch {
+    redirect("/logins?erro=excluir");
+  }
+  if (missing) redirect("/logins?erro=excluir");
+  revalidatePath("/logins");
+  redirect("/logins?ok=excluido");
+}

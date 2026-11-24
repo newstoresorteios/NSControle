@@ -8,10 +8,11 @@ import { decimal, monthDate, text } from "@/lib/form";
 
 const uuid = (value: string | null) => Boolean(value && /^[0-9a-f-]{36}$/i.test(value));
 
-function finish(month: string | null, error?: string): never {
+function finish(month: string | null, error?: string, ok = "1"): never {
   revalidatePath("/intermediacao");
   const target = month ? `/intermediacao?month=${month.slice(0, 7)}` : "/intermediacao";
-  redirect(`${target}${error ? `&erro=${encodeURIComponent(error)}` : "&ok=1"}`);
+  const sep = target.includes("?") ? "&" : "?";
+  redirect(`${target}${error ? `${sep}erro=${encodeURIComponent(error)}` : `${sep}ok=${encodeURIComponent(ok)}`}`);
 }
 
 function orderKey(value: string | null) {
@@ -120,11 +121,11 @@ export async function deleteNote(data: FormData) {
   const month = monthDate(data, "month");
   const id = text(data, "id");
   try {
-    if (!uuid(id) || data.get("confirmed") !== "on") throw new Error("Confirme a exclusão da nota.");
+    if (!uuid(id)) throw new Error("Nota inválida.");
     const [removed] = await db()`delete from ctl_intermediation_notes where id = ${id!} returning id`;
     if (!removed) throw new Error("Nota não encontrada.");
   } catch (error) {
     finish(month, error instanceof Error && !("code" in error) ? error.message : "Não foi possível excluir a nota.");
   }
-  finish(month);
+  finish(month, undefined, "excluida");
 }

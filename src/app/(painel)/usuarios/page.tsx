@@ -1,7 +1,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { createUser, updateUser } from "./actions";
-import { DeleteUser } from "./delete-user";
+import { ConfirmDelete } from "@/components/confirm-delete";
+import { createUser, removeUser, updateUser } from "./actions";
 
 const ERRORS: Record<string, string> = {
   invalido: "Informe um usuário em letras minúsculas, sem espaços, e um nome.",
@@ -84,7 +84,14 @@ export default async function UsuariosPage({
                         <input name="password" type="text" placeholder={user.local ? "Manter a atual" : "Pelo ícone do usuário"} disabled={!user.local} maxLength={72} />
                       </label>
                       <button className="ok" type="submit">Salvar</button>
-                      {own ? null : <DeleteUser id={user.user_id} name={user.display_name || login} />}
+                      {own ? null : (
+                        <ConfirmDelete
+                          action={removeUser}
+                          fields={{ id: user.user_id }}
+                          title="Excluir usuário"
+                          message={`Excluir o acesso de ${user.display_name || login}?`}
+                        />
+                      )}
                     </form>
                   </td>
                 </tr>

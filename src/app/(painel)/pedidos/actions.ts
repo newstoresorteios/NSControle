@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { decimal, flag, integer, monthDate, text } from "@/lib/form";
-import { calendarDate, nonnegativeMoney, validUuid } from "@/lib/operational";
+import { calendarDate, nonnegativeMoney, panelPath, pathWith, validUuid } from "@/lib/operational";
 
 const SENTINEL = "0001-01-01";
 
@@ -252,4 +252,47 @@ export async function updateOrder(formData: FormData) {
   revalidatePath(`/pedidos/${id}`);
   revalidatePath("/");
   redirect(`/pedidos/${id}?ok=1`);
+}
+
+export async function deleteOrder(formData: FormData) {
+  await requireTeam();
+  const id = text(formData, "id") ?? "";
+  const back = panelPath(text(formData, "return_to"), "/pedidos", "/pedidos");
+  if (!validUuid(id)) redirect(pathWith(back, "erro", "excluir"));
+  let outcome: "ok" | "excluir" | "envio" | "ausente" = "ok";
+  try {
+    outcome = await db().begin(async (tx) => {
+      const [order] = await tx<{ id: string }[]>`select id from ctl_orders where id = ${id}`;
+      if (!order) return "ausente" as const;
+      const active = await tx<{ id: string }[]>`
+        select id from ctl_integration_shipments
+        where order_id = ${id} and status <> 'cancelado'
+        limit 1
+      `;
+      if (active.length) return "envio" as const;
+      await tx`
+        delete from ctl_integration_events
+        where shipment_id in (select id from ctl_integration_shipments where order_id = ${id})
+      `;
+      await tx`delete from ctl_integration_shipments where order_id = ${id}`;
+      await tx`delete from ctl_integration_order_data where order_id = ${id}`;
+      await tx`delete from ctl_integration_purchase_requests where order_id = ${id}`;
+      await tx`
+        update ctl_integration_stock
+        set order_id = null,
+            status = case when status = 'Reservado' then 'Disponível' else status end,
+            updated_at = now()
+        where order_id = ${id}
+      `;
+      await tx`delete from ctl_orders where id = ${id}`;
+      return "ok" as const;
+    });
+  } catch {
+    outcome = "excluir";
+  }
+  if (outcome !== "ok") redirect(pathWith(back, "erro", outcome === "envio" ? "envio" : "excluir"));
+  revalidatePath("/pedidos");
+  revalidatePath("/financeiro");
+  revalidatePath("/");
+  redirect(pathWith(back, "ok", "excluido"));
 }

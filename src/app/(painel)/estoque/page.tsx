@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
-import { createInventoryItem, updateInventoryItem } from "@/app/(painel)/estoque/actions";
+import { createInventoryItem, deleteInventoryItem, updateInventoryItem } from "@/app/(painel)/estoque/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl } from "@/lib/format";
@@ -52,6 +53,7 @@ export default async function EstoquePage({
   const kept = new URLSearchParams();
   for (const key of ["q", "marca", "origem", "status"] as const) if (params[key]) kept.set(key, params[key]);
   const listHref = `/estoque?${kept.toString()}#lista-estoque`;
+  const back = kept.size ? `/estoque?${kept}` : "/estoque";
 
   return (
     <div className="grid gap-5">
@@ -64,8 +66,11 @@ export default async function EstoquePage({
         </p>
         {missingCost ? <p className="mt-1 text-sm text-warn">Resultado parcial — {missingCost} {missingCost === 1 ? "peça sem custo" : "peças sem custo"}. O custo vazio não entra como zero confirmado.</p> : <p className="mt-1 text-sm text-muted">Resultado {brl(saleTotal - costTotal)}.</p>}
       </div>
-      {params.erro ? <p className="text-sm text-danger">Não foi possível salvar. Confira o modelo, os valores e a data.</p> : null}
-      {params.ok ? <p className="text-sm text-ok">Item atualizado.</p> : null}
+      {params.erro === "integracao" ? <p className="text-sm text-danger">Esta peça está na integração da Europa e permanece no estoque.</p> : null}
+      {params.erro === "excluir" ? <p className="text-sm text-danger">Não foi possível excluir a peça.</p> : null}
+      {params.erro && params.erro !== "integracao" && params.erro !== "excluir" ? <p className="text-sm text-danger">Não foi possível salvar. Confira o modelo, os valores e a data.</p> : null}
+      {params.ok === "excluido" ? <p className="text-sm text-ok">Peça excluída.</p> : null}
+      {params.ok && params.ok !== "excluido" ? <p className="text-sm text-ok">Item atualizado.</p> : null}
       <details className="card">
         <summary className="section-title">Nova peça</summary>
         <form action={createInventoryItem} className="mt-3 grid gap-3 md:grid-cols-3">
@@ -135,7 +140,15 @@ export default async function EstoquePage({
                     )}
                   </td>
                   <td>
-                    <Link className="underline" href={`/estoque?${new URLSearchParams({ ...Object.fromEntries(kept), editar: item.id }).toString()}#editar-${item.id}`}>Editar</Link>
+                    <div className="flex flex-wrap gap-2">
+                      <Link className="underline" href={`/estoque?${new URLSearchParams({ ...Object.fromEntries(kept), editar: item.id }).toString()}#editar-${item.id}`}>Editar</Link>
+                      <ConfirmDelete
+                        action={deleteInventoryItem}
+                        fields={{ id: item.id, return_to: back }}
+                        title="Excluir peça"
+                        message={`Excluir ${item.model} do estoque?`}
+                      />
+                    </div>
                   </td>
                 </tr>
                 {params.editar === item.id ? (
@@ -164,6 +177,12 @@ export default async function EstoquePage({
                           <label className="grid gap-1 text-sm md:col-span-2">Observações<textarea name="notes" defaultValue={item.notes ?? ""} rows={3} /></label>
                           <div className="flex flex-wrap gap-2 md:col-span-2">
                             <button className="ok" type="submit">Salvar alterações</button>
+                            <ConfirmDelete
+                              action={deleteInventoryItem}
+                              fields={{ id: item.id, return_to: back }}
+                              title="Excluir peça"
+                              message={`Excluir ${item.model} do estoque?`}
+                            />
                             <Link className="button no" href={listHref}>Cancelar</Link>
                           </div>
                         </form>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteInvoice, saveInvoice } from "@/app/(painel)/pagamentos/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { FLOW_LABEL, asNumber, money, shortDate } from "@/lib/format";
@@ -277,15 +278,17 @@ export default async function PagamentoPage({
           <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-sm">{invoice.raw_text}</pre>
         </details>
       ) : null}
-      <details className="card">
-        <summary className="section-title">Excluir fatura</summary>
-        <form action={deleteInvoice} className="mt-3">
-          <input type="hidden" name="id" value={invoice.id} />
-          <button type="submit" className="danger">
-            Excluir
-          </button>
-        </form>
-      </details>
+      <section className="card">
+        <h2 className="section-title">Excluir fatura</h2>
+        <div className="mt-3">
+          <ConfirmDelete
+            action={deleteInvoice}
+            fields={{ id: invoice.id }}
+            title="Excluir fatura"
+            message={`Excluir a fatura ${invoice.invoice_number || "sem número"}${invoice.supplier_name ? ` de ${invoice.supplier_name}` : ""}?`}
+          />
+        </div>
+      </section>
     </div>
   );
 }

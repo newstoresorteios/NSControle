@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { updateOrder } from "@/app/(painel)/pedidos/actions";
+import { deleteOrder, updateOrder } from "@/app/(painel)/pedidos/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl, money, shortDate } from "@/lib/format";
@@ -136,9 +137,17 @@ export default async function PedidoPage({
           Observações humanas
           <textarea name="notes_human" defaultValue={order.notes_human || ""} />
         </label>
-        <button type="submit" className="ok md:w-fit">
-          Salvar ficha
-        </button>
+        <div className="flex flex-wrap gap-2 md:col-span-3">
+          <button type="submit" className="ok md:w-fit">
+            Salvar ficha
+          </button>
+          <ConfirmDelete
+            action={deleteOrder}
+            fields={{ id: order.id, return_to: "/pedidos" }}
+            title="Excluir pedido"
+            message={`Excluir o pedido ${order.label || order.order_key}? Se ele veio da loja, a próxima sincronização pode trazê-lo de novo.`}
+          />
+        </div>
       </form>
     </div>
   );

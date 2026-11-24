@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createTradeIn, updateTradeIn } from "@/app/(painel)/compras/actions";
+import { createTradeIn, deleteTradeIn, updateTradeIn } from "@/app/(painel)/compras/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { brl } from "@/lib/format";
@@ -23,8 +24,10 @@ export default async function ComprasPage({
         <h1 className="page-title">Compras de clientes</h1>
         <p className="text-muted">{data?.length ?? 0} relógios comprados de clientes.</p>
       </div>
-      {params.erro ? <p className="text-sm text-danger">Informe o nome do cliente.</p> : null}
-      {params.ok ? <p className="text-sm text-ok">Compra atualizada.</p> : null}
+      {params.erro === "excluir" ? <p className="text-sm text-danger">Não foi possível excluir a compra.</p> : null}
+      {params.erro && params.erro !== "excluir" ? <p className="text-sm text-danger">Informe o nome do cliente.</p> : null}
+      {params.ok === "excluido" ? <p className="text-sm text-ok">Compra excluída.</p> : null}
+      {params.ok && params.ok !== "excluido" ? <p className="text-sm text-ok">Compra atualizada.</p> : null}
       <details className="card">
         <summary className="section-title">Nova compra</summary>
         <form action={createTradeIn} className="mt-3 grid gap-3 md:grid-cols-3">
@@ -92,9 +95,25 @@ export default async function ComprasPage({
                       <label className="grid gap-1 text-sm">Nota de entrada<select name="invoice_received" defaultValue={String(item.invoice_received)}><option value="false">Não</option><option value="true">Sim</option></select></label>
                       <label className="grid gap-1 text-sm">Entregue<select name="delivered" defaultValue={String(item.delivered)}><option value="false">Não</option><option value="true">Sim</option></select></label>
                       <p className="text-xs text-muted">Alterar o código atualiza o vínculo com o pedido quando houver correspondência única. O vínculo com estoque permanece.</p>
-                      <button className="ok" type="submit">Salvar</button>
+                      <div className="flex flex-wrap gap-2">
+                        <button className="ok" type="submit">Salvar</button>
+                        <ConfirmDelete
+                          action={deleteTradeIn}
+                          fields={{ id: item.id }}
+                          title="Excluir compra"
+                          message={`Excluir a compra de ${item.client_name}${item.model ? ` · ${item.model}` : ""}?`}
+                        />
+                      </div>
                     </form>
                   </details>
+                  <div className="mt-2">
+                    <ConfirmDelete
+                      action={deleteTradeIn}
+                      fields={{ id: item.id }}
+                      title="Excluir compra"
+                      message={`Excluir a compra de ${item.client_name}${item.model ? ` · ${item.model}` : ""}?`}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}

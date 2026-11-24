@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { patchOrder, requestAnaPurchase } from "@/app/(painel)/pedidos/actions";
+import { deleteOrder, patchOrder, requestAnaPurchase } from "@/app/(painel)/pedidos/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { shortDate } from "@/lib/format";
 import { canonicalOption, COMMERCIAL_STATUSES, ORIGINS, shipmentLabel, withCurrent } from "@/lib/lists";
 
@@ -83,8 +84,8 @@ export function OrderSheet({
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} data-tone={listTone(row.commercial_status, row.delivered) || undefined}>
-              {mode === "acompanhamento" ? <AcompanhamentoRow row={row} /> : null}
-              {mode === "rastreio" ? <RastreioRow row={row} /> : null}
+              {mode === "acompanhamento" ? <AcompanhamentoRow row={row} returnTo={returnTo} /> : null}
+              {mode === "rastreio" ? <RastreioRow row={row} returnTo={returnTo} /> : null}
               {mode === "pedidos" || mode === "entregues" ? <PedidosRow row={row} ana={ana} returnTo={returnTo} /> : null}
             </tr>
           ))}
@@ -157,7 +158,12 @@ function PedidosRow({ row, ana, returnTo }: { row: SheetOrder; ana: boolean; ret
       <td className="wide">
         {editing ? <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} /> : clip(row.notes_internal)}
       </td>
-      <td><EditButton editing={editing} onClick={() => setEditing((value) => !value)} /></td>
+      <td className="whitespace-nowrap">
+        <div className="flex gap-1">
+          <EditButton editing={editing} onClick={() => setEditing((value) => !value)} />
+          <DeleteOrder row={row} returnTo={returnTo} />
+        </div>
+      </td>
     </>
   );
 }
@@ -182,7 +188,7 @@ function AcompanhamentoHead() {
   );
 }
 
-function AcompanhamentoRow({ row }: { row: SheetOrder }) {
+function AcompanhamentoRow({ row, returnTo }: { row: SheetOrder; returnTo: string }) {
   const save = useSave(row.id);
   const [editing, setEditing] = useState(false);
   const [status, setStatus] = useState(row.commercial_status ?? "");
@@ -243,7 +249,12 @@ function AcompanhamentoRow({ row }: { row: SheetOrder }) {
       <td>{editing ? <DateCell name="supplier_purchase_date" value={row.supplier_purchase_date} onSave={save.run} /> : shortDate(row.supplier_purchase_date)}</td>
       <td className="wide">{editing ? <TextCell name="product_name" value={row.product_name} onSave={save.run} /> : clip(row.product_name)}</td>
       <td className="wide">{editing ? <AreaCell name="notes_internal" value={row.notes_internal} onSave={save.run} /> : clip(row.notes_internal)}</td>
-      <td><EditButton editing={editing} onClick={() => setEditing((value) => !value)} /></td>
+      <td className="whitespace-nowrap">
+        <div className="flex gap-1">
+          <EditButton editing={editing} onClick={() => setEditing((value) => !value)} />
+          <DeleteOrder row={row} returnTo={returnTo} />
+        </div>
+      </td>
     </>
   );
 }
@@ -260,11 +271,12 @@ function RastreioHead() {
       <th>Data evento</th>
       <th>Consultado</th>
       <th className="check">Entregue</th>
+      <th></th>
     </>
   );
 }
 
-function RastreioRow({ row }: { row: SheetOrder }) {
+function RastreioRow({ row, returnTo }: { row: SheetOrder; returnTo: string }) {
   const save = useSave(row.id);
   return (
     <>
@@ -300,7 +312,20 @@ function RastreioRow({ row }: { row: SheetOrder }) {
       <td className="check">
         <CheckCell name="delivered" checked={row.delivered} onSave={save.run} />
       </td>
+      <td><DeleteOrder row={row} returnTo={returnTo} /></td>
     </>
+  );
+}
+
+function DeleteOrder({ row, returnTo }: { row: SheetOrder; returnTo: string }) {
+  const number = shipmentLabel(row.order_key, row.label);
+  return (
+    <ConfirmDelete
+      action={deleteOrder}
+      fields={{ id: row.id, return_to: returnTo }}
+      title="Excluir pedido"
+      message={`Excluir o pedido ${number}? Se ele veio da loja, a próxima sincronização pode trazê-lo de novo.`}
+    />
   );
 }
 

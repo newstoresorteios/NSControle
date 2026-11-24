@@ -12,10 +12,11 @@ function listedMonth(formData: FormData) {
   return month && /^\d{4}-\d{2}$/.test(month) ? month : "";
 }
 
-function go(month: string, flag?: "erro" | "ok"): never {
+function go(month: string, flag?: { erro?: string; ok?: string }): never {
   const query = new URLSearchParams();
   if (month) query.set("month", month);
-  if (flag) query.set(flag, "1");
+  if (flag?.erro) query.set("erro", flag.erro);
+  if (flag?.ok) query.set("ok", flag.ok);
   const qs = query.toString();
   redirect(qs ? `/cancelamentos?${qs}` : "/cancelamentos");
 }
@@ -43,7 +44,7 @@ export async function createCancellation(formData: FormData) {
   const orderKey = text(formData, "order_key");
   const month = listedMonth(formData);
   const fields = cancellationFields(formData);
-  if (!fields) go(month, "erro");
+  if (!fields) go(month, { erro: "1" });
   try {
     await db().begin(async (tx) => {
       const found = orderKey ? await tx<{ id: string }[]>`
@@ -56,7 +57,7 @@ export async function createCancellation(formData: FormData) {
       await tx`insert into ctl_cancellations ${tx(row)}`;
     });
   } catch {
-    go(month, "erro");
+    go(month, { erro: "1" });
   }
   revalidatePath("/cancelamentos");
   go(month);
@@ -66,17 +67,37 @@ export async function updateCancellation(formData: FormData) {
   await requireTeam();
   const id = text(formData, "id") ?? "";
   const month = listedMonth(formData);
-  if (!validUuid(id)) go(month, "erro");
+  if (!validUuid(id)) go(month, { erro: "1" });
   const exists = await db()<{ id: string }[]>`select id from ctl_cancellations where id = ${id} limit 1`;
-  if (!exists[0]) go(month, "erro");
+  if (!exists[0]) go(month, { erro: "1" });
   const fields = cancellationFields(formData);
-  if (!fields) go(month, "erro");
+  if (!fields) go(month, { erro: "1" });
   try {
     await updateRow("ctl_cancellations", fields, "id", id);
   } catch {
-    go(month, "erro");
+    go(month, { erro: "1" });
   }
   revalidatePath("/cancelamentos");
   revalidatePath("/financeiro");
-  go(month, "ok");
+  go(month, { ok: "1" });
+}
+
+export async function deleteCancellation(formData: FormData) {
+  await requireTeam();
+  const id = text(formData, "id") ?? "";
+  const month = listedMonth(formData);
+  if (!validUuid(id)) go(month, { erro: "excluir" });
+  let missing = false;
+  try {
+    const removed = await db()<{ id: string }[]>`
+      delete from ctl_cancellations where id = ${id} returning id
+    `;
+    missing = removed.length === 0;
+  } catch {
+    go(month, { erro: "excluir" });
+  }
+  if (missing) go(month, { erro: "excluir" });
+  revalidatePath("/cancelamentos");
+  revalidatePath("/financeiro");
+  go(month, { ok: "excluido" });
 }

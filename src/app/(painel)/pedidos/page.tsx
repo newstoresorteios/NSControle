@@ -54,6 +54,7 @@ export default async function PedidosPage({
     mes?: string;
     loja?: string;
     erro?: string;
+    ok?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -194,6 +195,13 @@ export default async function PedidosPage({
       {params.erro === "ana" ? (
         <p className="text-sm text-danger">Não foi possível solicitar este pedido à Ana.</p>
       ) : null}
+      {params.erro === "excluir" ? (
+        <p className="text-sm text-danger">Não foi possível excluir o pedido.</p>
+      ) : null}
+      {params.erro === "envio" ? (
+        <p className="text-sm text-danger">Este pedido tem um envio para a Europa em andamento. Cancele a reserva antes de excluir.</p>
+      ) : null}
+      {params.ok === "excluido" ? <p className="text-sm text-ok">Pedido excluído.</p> : null}
       <nav className="flex flex-wrap gap-2">
         {ABAS.map((item) => (
           <Link

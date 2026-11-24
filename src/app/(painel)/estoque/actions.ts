@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { db, insertRow, updateRow } from "@/lib/db";
 import { decimal, text } from "@/lib/form";
-import { calendarDate, nonnegativeMoney, validUuid } from "@/lib/operational";
+import { calendarDate, nonnegativeMoney, panelPath, pathWith, validUuid } from "@/lib/operational";
 
 export async function createInventoryItem(formData: FormData) {
   await requireTeam();
@@ -67,4 +67,29 @@ export async function updateInventoryItem(formData: FormData) {
   }
   revalidatePath("/estoque");
   redirect("/estoque?ok=1");
+}
+
+export async function deleteInventoryItem(formData: FormData) {
+  await requireTeam();
+  const id = text(formData, "id") ?? "";
+  const back = panelPath(text(formData, "return_to"), "/estoque", "/estoque");
+  if (!validUuid(id)) redirect(pathWith(back, "erro", "excluir"));
+  let outcome: "ok" | "excluir" | "integracao" = "ok";
+  try {
+    const linked = await db()<{ id: string }[]>`
+      select id from ctl_integration_units where inventory_id = ${id} limit 1
+    `;
+    if (linked.length) outcome = "integracao";
+    else {
+      const removed = await db()<{ id: string }[]>`
+        delete from ctl_inventory_items where id = ${id} returning id
+      `;
+      if (!removed.length) outcome = "excluir";
+    }
+  } catch {
+    outcome = "excluir";
+  }
+  if (outcome !== "ok") redirect(pathWith(back, "erro", outcome));
+  revalidatePath("/estoque");
+  redirect(pathWith(back, "ok", "excluido"));
 }

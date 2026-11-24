@@ -83,3 +83,21 @@ export async function updateTradeIn(formData: FormData) {
   revalidatePath("/compras");
   redirect("/compras?ok=1");
 }
+
+export async function deleteTradeIn(formData: FormData) {
+  await requireTeam();
+  const id = text(formData, "id") ?? "";
+  if (!validUuid(id)) redirect("/compras?erro=excluir");
+  let missing = false;
+  try {
+    const removed = await db()<{ id: string }[]>`
+      delete from ctl_trade_ins where id = ${id} returning id
+    `;
+    missing = removed.length === 0;
+  } catch {
+    redirect("/compras?erro=excluir");
+  }
+  if (missing) redirect("/compras?erro=excluir");
+  revalidatePath("/compras");
+  redirect("/compras?ok=excluido");
+}

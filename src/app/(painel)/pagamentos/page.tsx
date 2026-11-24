@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { uploadInvoice } from "@/app/(painel)/pagamentos/actions";
+import { deleteInvoice, uploadInvoice } from "@/app/(painel)/pagamentos/actions";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, money, shortDate } from "@/lib/format";
@@ -16,7 +17,7 @@ const ERRORS: Record<string, string> = {
 export default async function PagamentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string }>;
+  searchParams: Promise<{ erro?: string; ok?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
@@ -50,7 +51,9 @@ export default async function PagamentosPage({
           referência. O vínculo só fica gravado depois da confirmação.
         </p>
       </div>
-      {params.erro && ERRORS[params.erro] ? <p className="text-sm text-danger">{ERRORS[params.erro]}</p> : null}
+      {params.erro === "excluir" ? <p className="text-sm text-danger">Não foi possível excluir a fatura.</p> : null}
+      {params.erro && params.erro !== "excluir" && ERRORS[params.erro] ? <p className="text-sm text-danger">{ERRORS[params.erro]}</p> : null}
+      {params.ok === "excluida" ? <p className="text-sm text-ok">Fatura excluída.</p> : null}
       {rows.length ? <PaymentSummary rows={rows} quotes={quotes} /> : null}
       <form action={uploadInvoice} className="card grid gap-3 md:max-w-xl">
         <h2 className="section-title">Enviar fatura</h2>
@@ -72,12 +75,13 @@ export default async function PagamentosPage({
               <th>Total</th>
               <th>Linhas</th>
               <th>Situação</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6}>Nenhuma fatura enviada.</td>
+                <td colSpan={7}>Nenhuma fatura enviada.</td>
               </tr>
             ) : (
               rows.map((row) => (
@@ -98,6 +102,14 @@ export default async function PagamentosPage({
                     </div>
                   </td>
                   <td>{row.status === "confirmado" ? "Confirmada" : "Aguardando confirmação"}</td>
+                  <td>
+                    <ConfirmDelete
+                      action={deleteInvoice}
+                      fields={{ id: row.id }}
+                      title="Excluir fatura"
+                      message={`Excluir a fatura ${row.invoice_number || "sem número"}${row.supplier_name ? ` de ${row.supplier_name}` : ""}?`}
+                    />
+                  </td>
                 </tr>
               ))
             )}
