@@ -225,7 +225,17 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
   const shipmentValue = money(shipping.shipment_value);
   const discount = money(order.discount);
   const taxes = money(order.taxes);
-  const paymentFee = taxes != null && taxes > 0 ? taxes : null;
+  const paymentRate = money(payment.payment_method_rate);
+  const paymentFee = paymentRate != null && paymentRate > 0 ? paymentRate : null;
+  const records = Array.isArray(payment.records)
+    ? payment.records.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    : [];
+  const transactions = Array.isArray(payment.transactions)
+    ? payment.transactions.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    : [];
+  const paidAmount = records.map((record) => money(record.value)).find((value) => value != null) ?? null;
+  const transactionId = transactions.map((item) => text(item.transaction_id)).find((value): value is string => Boolean(value)) ?? null;
+  const paymentNote = records.map((record) => text(record.note)).find((value): value is string => Boolean(value)) ?? null;
   const paymentMethod = text(payment.method) || text(order.payment_method);
   const customerName = text(customer.name);
   const phone = text(customer.phone) || text(customer.cellphone);
@@ -242,6 +252,10 @@ export function buildTrayDraft(complete: TrayComplete): TrayDraft | null {
     shipment && shipmentValue != null ? `${shipment} frete ${shipmentValue.toFixed(2)}` : shipment,
     discount ? `desconto ${discount.toFixed(2)}` : null,
     taxes ? `impostos ${taxes.toFixed(2)}` : null,
+    paymentFee != null ? `tarifa ${paymentFee.toFixed(2)}` : null,
+    paidAmount != null ? `pagamento ${paidAmount.toFixed(2)}` : null,
+    transactionId ? `transação ${transactionId}` : null,
+    paymentNote ? `obs ${paymentNote}` : null,
   ]
     .filter((part): part is string => Boolean(part))
     .join(" · ");
