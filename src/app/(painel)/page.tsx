@@ -193,6 +193,10 @@ export default async function HomePage({
   const windowSummaries = new Map(
     windowMonths.map((item) => [item, monthSummary(byMonth.get(item) ?? [], asNumber(goalByMonth.get(item)), item)]),
   );
+  const monthRows = byMonth.get(selected) ?? [];
+  const slices = financeSlices(monthRows, selected);
+  const salesCount = monthRows.filter((row) => asNumber(row.sale_amount) != null).length;
+  const withFee = monthRows.filter((row) => (asNumber(row.payment_fee) ?? 0) > 0).length;
   const [lateRows] = await Promise.all([
     params.atraso === "1"
       ? sql<{
@@ -244,8 +248,88 @@ export default async function HomePage({
 
       <section className="band band-month grid gap-3">
         <div>
-          <h2 className="section-title">{monthLabel(selected)}</h2>
-          <p className="mt-1 text-sm text-muted">Pendências e valores só deste mês.</p>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="section-title">{monthLabel(selected)}</h2>
+              <p className="mt-1 text-sm text-muted">
+                {currentGoal
+                  ? `${percent(summary.percentual)} da meta de ${brl(currentGoal)}.`
+                  : "Meta do mês ainda não definida."}
+                {summary.vendasCreditos ? ` NS Créditos ${brl(summary.vendasCreditos)} entram no resultado.` : ""}
+                {` Entram os pedidos com venda lançada, inclusive Aguardando Vindi. Fora da conta: cancelado e aguardando pagamento. Taxa informada em ${withFee} de ${salesCount}.`}
+                {" Loja nova é a pronta entrega (NS Relógios). Loja antiga é a venda do mês inteiro e já inclui a loja nova. O total soma os dois, como o cabeçalho da planilha. O lucro desconta o custo uma vez."}
+              </p>
+            </div>
+            <Link className="button secondary" href={`/financeiro?month=${selected}`}>
+              Abrir financeiro
+            </Link>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <article className="card stat stat-sale">
+            <p className="kicker">Venda</p>
+            <p className="num mt-2 text-3xl font-medium tracking-tight">{brl(summary.vendasLojas)}</p>
+          </article>
+          <article className="card stat stat-cost">
+            <p className="kicker">Custo</p>
+            <p className="num mt-2 text-3xl font-medium tracking-tight text-danger">{brl(summary.custoTotal)}</p>
+          </article>
+          <article className="card stat stat-profit">
+            <p className="kicker">Lucro</p>
+            <p className={`num mt-2 text-3xl font-medium tracking-tight ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(summary.resultado)}</p>
+          </article>
+        </div>
+        <div className="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Loja</th>
+                <th>Venda</th>
+                <th>Custo</th>
+                <th>Lucro</th>
+                <th>Alfândega</th>
+                <th>Taxa de pagamento</th>
+                <th>Sem compra</th>
+                <th>Sem alfândega</th>
+                <th>Sem envio</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Total (nova + antiga)</td>
+                <td className="num">{brl(summary.vendasLojas)}</td>
+                <td className="num">{brl(summary.custoTotal)}</td>
+                <td className={`num ${summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(summary.resultado)}</td>
+                <td className="num">{brl(summary.alfandega)}</td>
+                <td className="num">{brl(summary.taxaMaquina)}</td>
+                <td className={`num ${summary.semCompra ? "text-danger" : ""}`}>
+                  <Link className="underline" href={`/financeiro?month=${selected}&falta=compra`}>{summary.semCompra}</Link>
+                </td>
+                <td className={`num ${summary.semAlfandega ? "text-danger" : ""}`}>
+                  <Link className="underline" href={`/financeiro?month=${selected}&falta=alfandega`}>{summary.semAlfandega}</Link>
+                </td>
+                <td className={`num ${summary.semEnvio ? "text-danger" : ""}`}>
+                  <Link className="underline" href={`/financeiro?month=${selected}&falta=envio`}>{summary.semEnvio}</Link>
+                </td>
+              </tr>
+              {slices.map((slice) => (
+                <tr key={slice.key}>
+                  <td>{slice.label}</td>
+                  <td className="num">{brl(slice.summary.vendas)}</td>
+                  <td className="num">{brl(slice.summary.custoTotal)}</td>
+                  <td className={`num ${slice.summary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(slice.summary.resultado)}</td>
+                  <td className="num">{brl(slice.summary.alfandega)}</td>
+                  <td className="num">{brl(slice.summary.taxaMaquina)}</td>
+                  <td className={`num ${slice.summary.semCompra ? "text-danger" : ""}`}>{slice.summary.semCompra}</td>
+                  <td className={`num ${slice.summary.semAlfandega ? "text-danger" : ""}`}>{slice.summary.semAlfandega}</td>
+                  <td className={`num ${slice.summary.semEnvio ? "text-danger" : ""}`}>{slice.summary.semEnvio}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {summary.semCompra ? (
+            <p className="mt-3 text-sm text-warn">Lucro parcial — {summary.semCompra} pedidos sem compra. A margem do financeiro usa só os pedidos com compra lançada.</p>
+          ) : null}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <article className="card stat stat-info">
@@ -391,93 +475,6 @@ export default async function HomePage({
           </table>
         </section>
       ) : null}
-
-      {[selected].map((item) => {
-        const rows = byMonth.get(item) ?? [];
-        const goal = goalByMonth.get(item) ?? null;
-        const itemSummary = summary;
-        const slices = financeSlices(rows, item);
-        const sales = rows.filter((row) => asNumber(row.sale_amount) != null).length;
-        const withFee = rows.filter((row) => (asNumber(row.payment_fee) ?? 0) > 0).length;
-        return (
-          <section key={item} className="card overflow-x-auto">
-            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="section-title">{monthLabel(item)}</h2>
-                <p className="mt-1 text-sm text-muted">
-                  {goal
-                    ? `${percent(itemSummary.percentual)} da meta de ${brl(goal)}.`
-                    : "Meta do mês ainda não definida."}
-                  {itemSummary.vendasCreditos ? ` NS Créditos ${brl(itemSummary.vendasCreditos)} entram no resultado.` : ""}
-                  {` Entram os pedidos com venda lançada, inclusive Aguardando Vindi. Fora da conta: cancelado e aguardando pagamento. Taxa informada em ${withFee} de ${sales}.`}
-                  {" Loja nova é a pronta entrega (NS Relógios). Loja antiga é a venda do mês inteiro e já inclui a loja nova. O total soma os dois, como o cabeçalho da planilha. O lucro desconta o custo uma vez."}
-                </p>
-              </div>
-              <Link className="button secondary" href={`/financeiro?month=${item}`}>
-                Abrir financeiro
-              </Link>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Loja</th>
-                  <th>Venda</th>
-                  <th>Custo</th>
-                  <th>Lucro</th>
-                  <th>Alfândega</th>
-                  <th>Taxa de pagamento</th>
-                  <th>Sem compra</th>
-                  <th>Sem alfândega</th>
-                  <th>Sem envio</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Total (nova + antiga)</td>
-                  <td className="num">{brl(itemSummary.vendasLojas)}</td>
-                  <td className="num">{brl(itemSummary.custoTotal)}</td>
-                  <td className={`num ${itemSummary.resultado < 0 ? "text-danger" : "text-ok"}`}>{brl(itemSummary.resultado)}</td>
-                  <td className="num">{brl(itemSummary.alfandega)}</td>
-                  <td className="num">{brl(itemSummary.taxaMaquina)}</td>
-                  <td className={`num ${itemSummary.semCompra ? "text-danger" : ""}`}>
-                    <Link className="underline" href={`/financeiro?month=${item}&falta=compra`}>
-                      {itemSummary.semCompra}
-                    </Link>
-                  </td>
-                  <td className={`num ${itemSummary.semAlfandega ? "text-danger" : ""}`}>
-                    <Link className="underline" href={`/financeiro?month=${item}&falta=alfandega`}>
-                      {itemSummary.semAlfandega}
-                    </Link>
-                  </td>
-                  <td className={`num ${itemSummary.semEnvio ? "text-danger" : ""}`}>
-                    <Link className="underline" href={`/financeiro?month=${item}&falta=envio`}>
-                      {itemSummary.semEnvio}
-                    </Link>
-                  </td>
-                </tr>
-                {slices.map((slice) => (
-                  <tr key={slice.key}>
-                    <td>{slice.label}</td>
-                    <td className="num">{brl(slice.summary.vendas)}</td>
-                    <td className="num">{brl(slice.summary.custoTotal)}</td>
-                    <td className={`num ${slice.summary.resultado < 0 ? "text-danger" : "text-ok"}`}>
-                      {brl(slice.summary.resultado)}
-                    </td>
-                    <td className="num">{brl(slice.summary.alfandega)}</td>
-                    <td className="num">{brl(slice.summary.taxaMaquina)}</td>
-                    <td className={`num ${slice.summary.semCompra ? "text-danger" : ""}`}>{slice.summary.semCompra}</td>
-                    <td className={`num ${slice.summary.semAlfandega ? "text-danger" : ""}`}>{slice.summary.semAlfandega}</td>
-                    <td className={`num ${slice.summary.semEnvio ? "text-danger" : ""}`}>{slice.summary.semEnvio}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {itemSummary.semCompra ? (
-              <p className="mt-3 text-sm text-warn">Lucro parcial — {itemSummary.semCompra} pedidos sem compra. A margem do financeiro usa só os pedidos com compra lançada.</p>
-            ) : null}
-          </section>
-        );
-      })}
     </div>
   );
 }
