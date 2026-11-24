@@ -141,6 +141,12 @@ export default async function FinanceiroPage({
       sale_amount, purchase_amount, payment_fee, shipping_cost, import_tax, tax_identified_at, gain_amount
     from ctl_orders
     where finance_month = ${monthDate}
+      and coalesce(commercial_status, '') !~* 'aguard|cancel'
+      and (
+        data_source is distinct from 'tray'
+        or sale_amount is not null
+        or payment_date is not null
+      )
     order by flow, order_key desc
   `, sql<{ done_date: string | null; amount: string | null }[]>`
     select done_date, amount from ctl_cancellations
@@ -188,6 +194,7 @@ export default async function FinanceiroPage({
           <p className="max-w-3xl text-sm text-muted">
             Vendas e mês vêm das lojas. Frete, produto e rastreio vêm do pedido. Custo de compra, taxa da máquina,
             alfândega e o status da compra ficam na ficha. Pronta entrega e origem Brasil não exigem alfândega.
+            Entram só pedidos aprovados. Cancelados e aguardando pagamento ficam de fora.
             A taxa de pagamento entra quando a Tray informa a taxa do meio de pagamento.
           </p>
         </div>
