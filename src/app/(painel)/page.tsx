@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { syncTrayNow } from "@/app/(painel)/tray-actions";
+import { MonthSelect } from "@/components/month-select";
 import { SyncButton, SyncStatus } from "@/components/sync-button";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -88,7 +89,7 @@ function trayNotice(sync?: string, pedidos?: string): { message: string; tone: "
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ sync?: string; pedidos?: string; atraso?: string }>;
+  searchParams: Promise<{ sync?: string; pedidos?: string; atraso?: string; month?: string }>;
 }) {
   const params = await searchParams;
   await requireTeam();
@@ -185,9 +186,10 @@ export default async function HomePage({
   }
   const months = [...byMonth.keys()].sort((left, right) => right.localeCompare(left));
   if (!months.includes(month)) months.unshift(month);
+  const selected = (params.month && months.includes(params.month) ? params.month : months[0]) ?? month;
   const goalByMonth = new Map(goalRows.map((goal) => [String(goal.month).slice(0, 7), goal.target_amount]));
-  const currentGoal = goalByMonth.get(month) ?? null;
-  const summary = monthSummary(byMonth.get(month) ?? [], asNumber(currentGoal), month);
+  const currentGoal = goalByMonth.get(selected) ?? null;
+  const summary = monthSummary(byMonth.get(selected) ?? [], asNumber(currentGoal), selected);
   const late = lateCountRows[0]?.total ?? 0;
   const showLate = params.atraso === "1";
 
@@ -197,6 +199,13 @@ export default async function HomePage({
         <div>
           <h1 className="page-title">Hoje</h1>
           <p className="mt-2 text-sm">{configured ? lojaLine(sync) : "Falta TRAY_ADAPTER_URL ou TRAY_ADAPTER_TOKEN."}</p>
+          <form action="/" className="mt-3 w-64 max-w-full">
+            {showLate ? <input type="hidden" name="atraso" value="1" /> : null}
+            <label className="grid gap-1 text-sm">
+              Mês
+              <MonthSelect key={selected} months={months} value={selected} />
+            </label>
+          </form>
         </div>
         {configured ? (
           <form action={syncTrayNow} className="grid justify-items-end gap-2">
@@ -234,7 +243,7 @@ export default async function HomePage({
               : "Nenhum pedido aprovado deste mês tem taxa gravada. A loja ainda não devolveu a taxa do meio de pagamento."}
           </p>
         </article>
-        <Link href={showLate ? "/" : "/?atraso=1#atraso"} className="card stat block">
+        <Link href={showLate ? `/?month=${selected}` : `/?month=${selected}&atraso=1#atraso`} className="card stat block">
           <p className="kicker">Sem rastreio há 15 dias</p>
           <p className={`num mt-2 text-3xl font-medium tracking-tight ${late ? "text-danger" : ""}`}>{late}</p>
           <p className="mt-1 text-sm text-muted">{late ? (showLate ? "Ocultar a lista" : "Ver os pedidos") : "Nada em aberto"}</p>
@@ -270,10 +279,10 @@ export default async function HomePage({
         </section>
       ) : null}
 
-      {months.map((item) => {
+      {[selected].map((item) => {
         const rows = byMonth.get(item) ?? [];
         const goal = goalByMonth.get(item) ?? null;
-        const itemSummary = item === month ? summary : monthSummary(rows, asNumber(goal), item);
+        const itemSummary = summary;
         const slices = financeSlices(rows, item);
         const sales = rows.filter((row) => asNumber(row.sale_amount) != null).length;
         const withFee = rows.filter((row) => (asNumber(row.payment_fee) ?? 0) > 0).length;
