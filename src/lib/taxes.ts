@@ -28,6 +28,21 @@ export function customsFilterStatuses(filter: string) {
   return Object.prototype.hasOwnProperty.call(CUSTOMS_FILTERS, filter) ? CUSTOMS_FILTERS[filter] : null;
 }
 
+export function customsPayText(input: {
+  orderKey: string;
+  amount: number | string | null;
+  linha: string | null;
+}): string | null {
+  const ready = taxPaymentText(input);
+  if (ready) return ready;
+  const orderKey = input.orderKey.trim();
+  if (!orderKey || input.amount == null || input.amount === "") return null;
+  const number = typeof input.amount === "number" ? input.amount : Number(input.amount);
+  if (!Number.isFinite(number) || number < 0) return null;
+  const [whole, cents] = (Math.round(number * 100) / 100).toFixed(2).split(".");
+  return `Pedido ${orderKey}\n\nValor: R$ ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".")},${cents}`;
+}
+
 export function taxPaymentText(input: {
   orderKey: string;
   amount: number | string | null;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { customsFilterStatuses, customsStatusLabel, taxPaymentText, taxQueueStatus } from "./taxes.ts";
+import { customsFilterStatuses, customsPayText, customsStatusLabel, taxPaymentText, taxQueueStatus } from "./taxes.ts";
 
 test("identified charge without a value waits for research", () => {
   assert.equal(taxQueueStatus({ tax_identified_at: "2026-10-16", import_tax: null, tax_paid: false }), "sem_valor");
@@ -19,6 +19,11 @@ test("pagar taxa copia pedido, valor e linha digitável", () => {
   assert.equal(taxPaymentText({ orderKey: "26438", amount: "10", linha: "123" }), null);
   const thousands = `${"1".repeat(37)}0000129450`;
   assert.equal(taxPaymentText({ orderKey: "1", amount: 1294.5, linha: thousands }), `Pedido 1\n\nValor: R$ 1.294,50\n\n${thousands}`);
+});
+
+test("copiar a taxa leva o valor mesmo sem linha digitável", () => {
+  assert.equal(customsPayText({ orderKey: "26470", amount: "270.06", linha: null }), "Pedido 26470\n\nValor: R$ 270,06");
+  assert.equal(customsPayText({ orderKey: "", amount: "10", linha: null }), null);
 });
 
 test("a aba de alfândega agrupa o status gravado pelo robô", () => {

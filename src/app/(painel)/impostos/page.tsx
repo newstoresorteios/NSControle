@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { CopyTax } from "@/app/(painel)/impostos/copy-tax";
 import { requireTeam } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asNumber, brl, shortDate } from "@/lib/format";
-import { customsFilterStatuses, customsStatusLabel } from "@/lib/taxes";
+import { customsFilterStatuses, customsPayText, customsStatusLabel } from "@/lib/taxes";
 
 const PAGE_SIZE = 50;
 
@@ -119,7 +120,18 @@ export default async function ImpostosPage({
           or coalesce(o.label, '') ilike ${needle}
           or coalesce(o.product_name, '') ilike ${needle}
         )
-      order by t.last_scraped_at desc, t.tracking_code
+      order by
+        case
+          when t.tax_amount is not null
+            and coalesce(nullif(btrim(t.linha_digitavel), ''), b.linha_digitavel) is not null
+            and t.payment_status <> 'paid' then 0
+          when t.tax_amount is not null and t.payment_status <> 'paid' then 1
+          when t.tax_amount is not null then 2
+          else 3
+        end,
+        t.tax_amount desc nulls last,
+        t.last_scraped_at desc,
+        t.tracking_code
       limit ${PAGE_SIZE}
       offset ${(current - 1) * PAGE_SIZE}
     `;
@@ -130,6 +142,15 @@ export default async function ImpostosPage({
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const current = Math.min(page, pages);
+  const slips = rows.flatMap((row) => {
+    if (row.payment_status === "paid") return [];
+    const text = customsPayText({
+      orderKey: row.order_key || row.tracking_code,
+      amount: row.tax_amount,
+      linha: row.linha_digitavel,
+    });
+    return text ? [text] : [];
+  });
 
   return (
     <div className="grid gap-5">
@@ -180,6 +201,12 @@ export default async function ImpostosPage({
             </label>
             <button className="ok" type="submit">Buscar</button>
           </form>
+          {slips.length ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <CopyTax text={slips.join("\n\n")} label={`Copiar ${slips.length} para pagar`} />
+              <p className="text-sm text-muted">Copia pedido, valor e linha digitável, um abaixo do outro.</p>
+            </div>
+          ) : null}
           <div className="card overflow-x-auto">
             <table>
               <thead>
@@ -189,32 +216,50 @@ export default async function ImpostosPage({
                   <th>Situação</th>
                   <th>Valor</th>
                   <th>Vencimento</th>
-                  <th>Linha digitável</th>
+                  <th>Para pagar</th>
                   <th>Visto em</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      {row.order_id ? (
-                        <Link className="underline" href={`/pedidos/${row.order_id}`}>{row.label || row.order_key}</Link>
-                      ) : (
-                        "Sem pedido"
-                      )}
-                      {row.product_name ? <p className="text-xs text-muted">{row.product_name}</p> : null}
-                    </td>
-                    <td className="font-mono text-xs">{row.tracking_code}</td>
-                    <td>
-                      {customsStatusLabel(row.payment_status)}
-                      {row.pdf_path ? <p className="text-xs text-muted">PDF salvo</p> : null}
-                    </td>
-                    <td>{asNumber(row.tax_amount) == null ? "—" : brl(row.tax_amount)}</td>
-                    <td>{shortDate(row.due_date)}</td>
-                    <td className="max-w-64 font-mono text-xs">{row.linha_digitavel || "—"}</td>
-                    <td>{shortDate(row.last_scraped_at)}</td>
-                  </tr>
-                ))}
+                {rows.map((row) => {
+                  const slip = customsPayText({
+                    orderKey: row.order_key || row.tracking_code,
+                    amount: row.tax_amount,
+                    linha: row.linha_digitavel,
+                  });
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        {row.order_id ? (
+                          <Link className="underline" href={`/pedidos/${row.order_id}`}>{row.label || row.order_key}</Link>
+                        ) : (
+                          "Sem pedido"
+                        )}
+                        {row.product_name ? <p className="text-xs text-muted">{row.product_name}</p> : null}
+                      </td>
+                      <td className="font-mono text-xs">{row.tracking_code}</td>
+                      <td>
+                        {customsStatusLabel(row.payment_status)}
+                        {row.pdf_path ? <p className="text-xs text-muted">PDF salvo</p> : null}
+                      </td>
+                      <td>{asNumber(row.tax_amount) == null ? "—" : brl(row.tax_amount)}</td>
+                      <td>{shortDate(row.due_date)}</td>
+                      <td className="min-w-64">
+                        {slip && row.payment_status !== "paid" ? (
+                          <div className="grid gap-2">
+                            <pre className="tax-slip m-0 text-xs">{slip}</pre>
+                            <CopyTax text={slip} />
+                          </div>
+                        ) : slip ? (
+                          <span className="text-xs text-muted">Paga</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{shortDate(row.last_scraped_at)}</td>
+                    </tr>
+                  );
+                })}
                 {rows.length === 0 ? (
                   <tr>
                     <td colSpan={7}>Nenhuma taxa nesta situação.</td>
