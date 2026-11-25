@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/enderecos", label: "Endereços", tone: "text-brand border-brand" },
   { href: "/logins", label: "Logins", tone: "text-brand border-brand" },
   { href: "/financeiro", label: "Financeiro", tone: "text-ok border-ok" },
+  { href: "/impostos", label: "Impostos", tone: "text-ok border-ok" },
   { href: "/intermediacao", label: "Intermediação", tone: "text-ok border-ok" },
   { href: "/pagamentos", label: "Pagamentos", tone: "text-ok border-ok" },
   { href: "/cancelamentos", label: "Cancelamentos", tone: "text-ok border-ok" },

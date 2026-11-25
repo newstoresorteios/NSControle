@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { taxPaymentText, taxQueueStatus } from "./taxes.ts";
+import { customsFilterStatuses, customsStatusLabel, taxPaymentText, taxQueueStatus } from "./taxes.ts";
 
 test("identified charge without a value waits for research", () => {
   assert.equal(taxQueueStatus({ tax_identified_at: "2026-10-16", import_tax: null, tax_paid: false }), "sem_valor");
@@ -19,6 +19,14 @@ test("pagar taxa copia pedido, valor e linha digitável", () => {
   assert.equal(taxPaymentText({ orderKey: "26438", amount: "10", linha: "123" }), null);
   const thousands = `${"1".repeat(37)}0000129450`;
   assert.equal(taxPaymentText({ orderKey: "1", amount: 1294.5, linha: thousands }), `Pedido 1\n\nValor: R$ 1.294,50\n\n${thousands}`);
+});
+
+test("a aba de alfândega agrupa o status gravado pelo robô", () => {
+  assert.equal(customsStatusLabel("boleto_generated"), "Boleto gerado");
+  assert.equal(customsStatusLabel("paid"), "Paga");
+  assert.deepEqual(customsFilterStatuses("abertas"), ["pending", "awaiting_payment", "boleto_pending", "overdue"]);
+  assert.equal(customsFilterStatuses("pagas")?.includes("paid"), true);
+  assert.equal(customsFilterStatuses("outra"), null);
 });
 
 test("entering an amount does not imply payment", () => {

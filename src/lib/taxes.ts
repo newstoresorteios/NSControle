@@ -1,5 +1,33 @@
 export type TaxQueueStatus = "sem_valor" | "a_pagar" | "paga";
 
+export const CUSTOMS_STATUS_LABEL: Record<string, string> = {
+  pending: "Pendente",
+  awaiting_payment: "Aguardando pagamento",
+  boleto_pending: "Boleto a emitir",
+  boleto_generated: "Boleto gerado",
+  paid: "Paga",
+  overdue: "Vencida",
+  not_found: "Não encontrada",
+  no_action: "Sem ação",
+  error: "Erro",
+};
+
+const CUSTOMS_FILTERS: Record<string, string[] | null> = {
+  "": null,
+  abertas: ["pending", "awaiting_payment", "boleto_pending", "overdue"],
+  boleto: ["boleto_generated"],
+  pagas: ["paid"],
+  falhas: ["not_found", "no_action", "error"],
+};
+
+export function customsStatusLabel(status: string) {
+  return CUSTOMS_STATUS_LABEL[status] ?? status;
+}
+
+export function customsFilterStatuses(filter: string) {
+  return Object.prototype.hasOwnProperty.call(CUSTOMS_FILTERS, filter) ? CUSTOMS_FILTERS[filter] : null;
+}
+
 export function taxPaymentText(input: {
   orderKey: string;
   amount: number | string | null;
